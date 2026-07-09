@@ -1,0 +1,12 @@
+﻿# Mengabaikan folder hasil kompilasi/build
+build/
+out/
+bin/
+.vs/
+
+# Mengabaikan file database lokal
+*.db
+memory.db
+
+# Mengabaikan file konfigurasi IDE bawaan VS Code (opsional)
+.vscode/
