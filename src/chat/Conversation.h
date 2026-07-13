@@ -34,6 +34,7 @@ public:
     // Menambahkan pesan user
     //==============================================================
     void AddUserMessage(const std::string& message);
+    void RemoveLastUserMessage();
 
     //==============================================================
     // Menambahkan pesan AI

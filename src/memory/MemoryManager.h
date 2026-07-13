@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MemoryStorage.h"
+#include "../config/Config.h"
 
 #include <memory>
 #include <optional>
@@ -16,6 +17,9 @@ public:
     explicit MemoryManager(
         std::unique_ptr<MemoryStorage> storage);
 
+    explicit MemoryManager(
+        const Yuki::Config::MemoryConfig& config);
+
     ~MemoryManager() = default;
 
     MemoryManager(const MemoryManager&) = delete;
@@ -25,11 +29,17 @@ public:
     MemoryManager& operator=(MemoryManager&&) noexcept = default;
 
     //-------------------------------------------------------
-    // Save or update memory
+    // Save or update memory (key/value overload — backward compat)
     //-------------------------------------------------------
     bool Remember(
         const std::string& key,
         const std::string& value);
+
+    //-------------------------------------------------------
+    // Save or update memory with full entry (preserves metadata)
+    //-------------------------------------------------------
+    bool Remember(
+        const MemoryEntry& entry);
 
     //-------------------------------------------------------
     // Retrieve memory

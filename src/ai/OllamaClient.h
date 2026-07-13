@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AIBackend.h"
+#include "../config/Config.h"
 #include "../utils/HttpClient.h"
 
 #include <memory>
@@ -17,6 +18,10 @@ public:
         Yuki::Utils::HttpClient& httpClient,
         std::string model = "gemma3:4b");
 
+    OllamaClient(
+        Yuki::Utils::HttpClient& httpClient,
+        const Yuki::Config::OllamaConfig& config);
+
     std::string Generate(
         const std::string& prompt) override;
 
@@ -26,8 +31,7 @@ private:
 
     std::string m_model;
 
-    const std::string m_endpoint =
-        "http://127.0.0.1:11434/api/generate";
+    std::string m_endpoint;
 
     std::string BuildRequestBody(
         const std::string& prompt) const;

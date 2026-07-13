@@ -2,6 +2,7 @@
 
 #include "MemoryStorage.h"
 #include "MemoryEntry.h"
+#include "../config/Config.h"
 
 #include <memory>
 #include <optional>
@@ -23,13 +24,16 @@ struct Sqlite3Deleter {
 // SQLiteMemoryStorage
 // -----------------------------------------------------------------------
 // Concrete MemoryStorage implementation backed by a local SQLite database.
-// Single responsibility: persist/retrieve MemoryEntry rows.
-// Runtime failures are reported via Logger and via return values
-// (bool / std::optional / empty vector) — never via exceptions.
+// Single responsibility: persist/retrieve MemoryEntry rows (including
+// MemoryMetadata).
+//
+// Schema migration (adding new columns) happens automatically on first
+// open so older databases stay compatible.
 // -----------------------------------------------------------------------
 class SQLiteMemoryStorage final : public MemoryStorage {
 public:
     explicit SQLiteMemoryStorage(std::string databasePath = "memory.db");
+    explicit SQLiteMemoryStorage(const Yuki::Config::MemoryConfig& config);
     ~SQLiteMemoryStorage() override;
 
     SQLiteMemoryStorage(const SQLiteMemoryStorage&) = delete;
@@ -48,11 +52,15 @@ private:
     bool Open();
     void Close();
     bool CreateTableIfNeeded();
+    bool MigrateSchema();
 
     bool IsOpen() const noexcept;
     bool PrepareStatement(const char* sql, sqlite3_stmt** outStmt) const;
     bool StepExpectDone(sqlite3_stmt* stmt, const std::string& context) const;
     bool ExecuteNonQuery(const char* sql) const;
+    bool ExecuteRaw(const char* sql) const;
+
+    MemoryEntry RowToEntry(sqlite3_stmt* stmt) const;
 
     std::string m_databasePath;
     std::unique_ptr<sqlite3, Sqlite3Deleter> m_db;

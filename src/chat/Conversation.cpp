@@ -15,6 +15,15 @@ void Conversation::AddUserMessage(const std::string& message)
     });
 }
 
+void Conversation::RemoveLastUserMessage()
+{
+    if (!m_messages.empty() &&
+        m_messages.back().role == MessageRole::User)
+    {
+        m_messages.pop_back();
+    }
+}
+
 //==============================================================
 // Menambahkan pesan dari AI
 //==============================================================

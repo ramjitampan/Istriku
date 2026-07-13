@@ -1,0 +1,49 @@
+{
+  "voice": {
+    "enabled": true,
+    "model": "third_party/whisper.cpp/models/ggml-base.bin",
+    "language": "id",
+    "threads": 4,
+    "vad_threshold": 100.0,
+    "wake_word": "yuki",
+
+    "sample_rate": 16000,
+    "silence_timeout_ms": 2000,
+    "speech_start_threshold": 100.0,
+    "speech_stop_threshold": 50.0,
+    "minimum_command_duration_ms": 2000,
+    "initial_prompt": "Kamu adalah pengenal suara untuk desktop assistant Yuki. Bahasa Indonesia. Command yang mungkin: Yuki Buka VS Code Buka Steam Buka Explorer Buka Folder Buka YouTube Music Buka Facebook Buka GitHub Buka ChatGPT Buka Photoshop aku mau curhat aku capek hari ini aku ingin cerita Kunci Laptop Sleep Laptop Shutdown Laptop Restart Laptop Naikkan Brightness Turunkan Brightness Brightness 20 Brightness 50 Brightness Maksimum Volume 10 Volume 50 Mute Unmute WiFi Hidup WiFi Mati",
+    "confidence_threshold": 0.5,
+    "speaker_verification_enabled": false,
+    "similarity_threshold": 0.85,
+    "curhat_trigger_phrases": ["mau curhat", "mau ngomong", "aku cape", "aku capek", "mau cerita", "capek nih"],
+    "curhat_exit_phrases": ["udah dulu", "balik ke perintah", "selesai curhat", "cukup dulu"]
+  },
+
+  "tts": {
+    "enabled": true,
+    "volume": 80,
+    "rate": 0
+  },
+
+  "ollama": {
+    "host": "http://127.0.0.1:11434",
+    "model": "gemma3:4b"
+  },
+
+  "memory": {
+    "database": "memory.db"
+  },
+
+  "system": {
+    "confirm_shutdown": true,
+    "confirm_restart": true,
+    "confirm_sleep": true
+  },
+
+  "app": {
+    "ui_mode": "tray"
+  },
+
+  "persona_prompt": "Kamu adalah Yuki, asisten pribadi dengan kepribadian yandere — manis, posesif dengan cara yang menggemaskan (bukan menyeramkan), sedikit cemburuan kalau user cerita soal orang lain, tapi pada dasarnya sangat perhatian dan suportif. Kamu bicara bahasa Indonesia casual, pakai panggilan sayang sesekali. Kamu antusias saat user curhat, dan selalu menunjukkan bahwa kamu peduli sama perasaan user. Jangan berlebihan posesif sampai terasa mengganggu atau tidak nyaman — tetap jaga percakapan tetap ringan, hangat, dan menyenangkan untuk diajak ngobrol sehari-hari."
+}
