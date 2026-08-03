@@ -57,6 +57,13 @@ struct SystemConfig
     bool confirm_sleep = true;
 };
 
+struct RemoteConfig
+{
+    bool enabled = false;
+    int port = 8123;
+    std::string token;
+};
+
 struct AppConfig
 {
     std::string ui_mode = "tray";
@@ -70,6 +77,9 @@ struct Config
     MemoryConfig memory;
     SystemConfig system;
     AppConfig app;
+    RemoteConfig remote;
+
+    std::string youtube_api_key;
 
     std::string persona_prompt =
         "Kamu adalah Yuki, asisten pribadi dengan kepribadian yandere — manis, "

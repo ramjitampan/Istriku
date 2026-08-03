@@ -1,6 +1,7 @@
 #include "IntentDetector.h"
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <regex>
 #include <string>
 #include <vector>
@@ -41,6 +42,10 @@ Command IntentDetector::Detect(const std::string& message)
     if (result.type != CommandType::Unknown)
         return result;
 
+    result = DetectPlaySong(msg);
+    if (result.type != CommandType::Unknown)
+        return result;
+
     result = DetectVolume(msg);
     if (result.type != CommandType::Unknown)
         return result;
@@ -53,7 +58,7 @@ Command IntentDetector::Detect(const std::string& message)
     if (result.type != CommandType::Unknown)
         return result;
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectConfirmation(const std::string& msg)
@@ -62,7 +67,7 @@ Command IntentDetector::DetectConfirmation(const std::string& msg)
     {
         if (msg == word || msg.find(word) != std::string::npos)
         {
-            return {CommandType::Unknown, -1, false};
+            return {CommandType::Unknown, -1, "", false};
         }
     }
 
@@ -70,11 +75,11 @@ Command IntentDetector::DetectConfirmation(const std::string& msg)
     {
         if (msg.find(word) != std::string::npos)
         {
-            return {CommandType::Unknown, -1, false};
+            return {CommandType::Unknown, -1, "", false};
         }
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectSystem(const std::string& msg)
@@ -83,7 +88,7 @@ Command IntentDetector::DetectSystem(const std::string& msg)
     if ((Contains(msg, "nyenyak") && Contains(msg, "tidur")) ||
         (Contains(msg, "tidur") && Contains(msg, "sayang")))
     {
-        return {CommandType::Shutdown, -1, true};
+        return {CommandType::Shutdown, -1, "", true};
     }
 
     if (Contains(msg, "matikan laptop") ||
@@ -92,7 +97,7 @@ Command IntentDetector::DetectSystem(const std::string& msg)
         Contains(msg, "shut down") ||
         (Contains(msg, "matikan") && Contains(msg, "laptop")))
     {
-        return {CommandType::Shutdown, -1, true};
+        return {CommandType::Shutdown, -1, "", true};
     }
 
     if (Contains(msg, "restart") ||
@@ -100,14 +105,14 @@ Command IntentDetector::DetectSystem(const std::string& msg)
         (Contains(msg, "mulai") && Contains(msg, "ulang")) ||
         Contains(msg, "restart ulang"))
     {
-        return {CommandType::Restart, -1, true};
+        return {CommandType::Restart, -1, "", true};
     }
 
     if (Contains(msg, "sleep") ||
         Contains(msg, "tidur") ||
         Contains(msg, "mode tidur"))
     {
-        return {CommandType::Sleep, -1, true};
+        return {CommandType::Sleep, -1, "", true};
     }
 
     if (Contains(msg, "kunci laptop") ||
@@ -116,7 +121,7 @@ Command IntentDetector::DetectSystem(const std::string& msg)
         Contains(msg, "kuncikan") ||
         Contains(msg, "kunci"))
     {
-        return {CommandType::Lock, -1, false};
+        return {CommandType::Lock, -1, "", false};
     }
 
     if (Contains(msg, "log out") ||
@@ -124,10 +129,10 @@ Command IntentDetector::DetectSystem(const std::string& msg)
         Contains(msg, "keluar") ||
         Contains(msg, "sign out"))
     {
-        return {CommandType::Logout, -1, false};
+        return {CommandType::Logout, -1, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectApplications(const std::string& msg)
@@ -137,13 +142,13 @@ Command IntentDetector::DetectApplications(const std::string& msg)
         Contains(msg, "vscode") ||
         Contains(msg, "code"))
     {
-        return {CommandType::OpenVSCode, -1, false};
+        return {CommandType::OpenVSCode, -1, "", false};
     }
 
     if (Contains(msg, "buka steam") ||
         Contains(msg, "steam"))
     {
-        return {CommandType::OpenSteam, -1, false};
+        return {CommandType::OpenSteam, -1, "", false};
     }
 
     if (Contains(msg, "buka folder") ||
@@ -151,10 +156,10 @@ Command IntentDetector::DetectApplications(const std::string& msg)
         Contains(msg, "explorer") ||
         Contains(msg, "buka direktori"))
     {
-        return {CommandType::OpenExplorer, -1, false};
+        return {CommandType::OpenExplorer, -1, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectWeb(const std::string& msg)
@@ -163,7 +168,7 @@ Command IntentDetector::DetectWeb(const std::string& msg)
         Contains(msg, "youtube music") ||
         Contains(msg, "yt music"))
     {
-        return {CommandType::OpenYoutubeMusic, -1, false};
+        return {CommandType::OpenYoutubeMusic, -1, "", false};
     }
 
     // Looser match: "buka"/"bukakan" + any of youtube/yutub/music/musik
@@ -173,16 +178,16 @@ Command IntentDetector::DetectWeb(const std::string& msg)
         (Contains(msg, "youtube") || Contains(msg, "yutub") ||
          Contains(msg, "music") || Contains(msg, "musik")))
     {
-        return {CommandType::OpenYoutubeMusic, -1, false};
+        return {CommandType::OpenYoutubeMusic, -1, "", false};
     }
 
     if (Contains(msg, "buka github") ||
         Contains(msg, "github"))
     {
-        return {CommandType::OpenGithub, -1, false};
+        return {CommandType::OpenGithub, -1, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectScreenshot(const std::string& msg)
@@ -192,24 +197,57 @@ Command IntentDetector::DetectScreenshot(const std::string& msg)
         Contains(msg, "tangkap layar") ||
         msg == "ss")
     {
-        return {CommandType::Screenshot, -1, false};
+        return {CommandType::Screenshot, -1, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
+}
+
+Command IntentDetector::DetectPlaySong(const std::string& msg)
+{
+    static const char* triggers[] = {
+        "putar lagu", "buka lagu", "mainkan lagu", "putarkan lagu",
+        "putarin lagu", "nyalakan lagu", "play lagu", "putar musik",
+        "buka musik", "mainkan musik", "nyalakan musik", "putar",
+        "mainkan", "play"
+    };
+
+    for (const auto* trigger : triggers)
+    {
+        size_t pos = msg.find(trigger);
+        if (pos == std::string::npos)
+            continue;
+
+        std::string query = msg.substr(pos + std::strlen(trigger));
+        size_t start = query.find_first_not_of(" \t");
+        if (start == std::string::npos)
+            return {CommandType::Unknown, -1, "", false};
+
+        query = query.substr(start);
+        size_t end = query.find_last_not_of(" \t\r\n");
+        query = query.substr(0, end + 1);
+
+        Command cmd;
+        cmd.type = CommandType::PlaySong;
+        cmd.query = query;
+        return cmd;
+    }
+
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectVolume(const std::string& msg)
 {
     if (Contains(msg, "mute"))
     {
-        return {CommandType::Volume, 0, false};
+        return {CommandType::Volume, 0, "", false};
     }
 
     if (Contains(msg, "unmute") ||
         (Contains(msg, "buka") && Contains(msg, "mute")) ||
         Contains(msg, "hidupkan suara"))
     {
-        return {CommandType::Volume, 50, false};
+        return {CommandType::Volume, 50, "", false};
     }
 
     if (Contains(msg, "volume naik") ||
@@ -218,7 +256,7 @@ Command IntentDetector::DetectVolume(const std::string& msg)
         Contains(msg, "volume besar") ||
         (Contains(msg, "volume") && Contains(msg, "naik")))
     {
-        return {CommandType::Volume, -1, false};
+        return {CommandType::Volume, -1, "", false};
     }
 
     if (Contains(msg, "volume turun") ||
@@ -227,7 +265,7 @@ Command IntentDetector::DetectVolume(const std::string& msg)
         Contains(msg, "volume kecil") ||
         (Contains(msg, "volume") && Contains(msg, "turun")))
     {
-        return {CommandType::Volume, -2, false};
+        return {CommandType::Volume, -2, "", false};
     }
 
     int number = ParseIndonesianNumber(msg);
@@ -235,11 +273,11 @@ Command IntentDetector::DetectVolume(const std::string& msg)
     {
         if (Contains(msg, "volume") || Contains(msg, "vol"))
         {
-            return {CommandType::Volume, number, false};
+            return {CommandType::Volume, number, "", false};
         }
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectBrightness(const std::string& msg)
@@ -249,13 +287,13 @@ Command IntentDetector::DetectBrightness(const std::string& msg)
         msg == "brightness maksimum" ||
         msg == "layar terang sekali")
     {
-        return {CommandType::Brightness, 100, false};
+        return {CommandType::Brightness, 100, "", false};
     }
 
     if (Contains(msg, "terangkan sedikit") ||
         Contains(msg, "terang dikit"))
     {
-        return {CommandType::Brightness, -1, false};
+        return {CommandType::Brightness, -1, "", false};
     }
 
     // Check for number FIRST — jika ada angka + keyword brightness, pake absolut
@@ -270,7 +308,7 @@ Command IntentDetector::DetectBrightness(const std::string& msg)
             Contains(msg, "brig") ||
             Contains(msg, "persen"))
         {
-            return {CommandType::Brightness, number, false};
+            return {CommandType::Brightness, number, "", false};
         }
     }
 
@@ -287,7 +325,7 @@ Command IntentDetector::DetectBrightness(const std::string& msg)
         Contains(msg, "terangin") ||
         (Contains(msg, "brightness") && Contains(msg, "naik")))
     {
-        return {CommandType::Brightness, -2, false};
+        return {CommandType::Brightness, -2, "", false};
     }
 
     // Brightness DOWN variants
@@ -306,10 +344,10 @@ Command IntentDetector::DetectBrightness(const std::string& msg)
         Contains(msg, "redup") ||
         (Contains(msg, "brightness") && Contains(msg, "turun")))
     {
-        return {CommandType::Brightness, -3, false};
+        return {CommandType::Brightness, -3, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 Command IntentDetector::DetectWifi(const std::string& msg)
@@ -321,7 +359,7 @@ Command IntentDetector::DetectWifi(const std::string& msg)
         Contains(msg, "wifi on") ||
         (Contains(msg, "wifi") && (Contains(msg, "hidup") || Contains(msg, "nyala"))))
     {
-        return {CommandType::WifiOn, -1, false};
+        return {CommandType::WifiOn, -1, "", false};
     }
 
     if (Contains(msg, "wifi mati") ||
@@ -330,10 +368,10 @@ Command IntentDetector::DetectWifi(const std::string& msg)
         Contains(msg, "wifi off") ||
         (Contains(msg, "wifi") && Contains(msg, "mati")))
     {
-        return {CommandType::WifiOff, -1, false};
+        return {CommandType::WifiOff, -1, "", false};
     }
 
-    return {CommandType::Unknown, -1, false};
+    return {CommandType::Unknown, -1, "", false};
 }
 
 // ===================== HELPERS =====================

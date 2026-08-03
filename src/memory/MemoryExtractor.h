@@ -2,8 +2,8 @@
 
 #include "MemoryEntry.h"
 
+#include <optional>
 #include <string>
-#include <vector>
 
 namespace Yuki::Memory
 {
@@ -20,8 +20,16 @@ public:
     MemoryExtractor(MemoryExtractor&&) noexcept = default;
     MemoryExtractor& operator=(MemoryExtractor&&) noexcept = default;
 
-    std::vector<MemoryEntry> Extract(
+    // Mengekstrak SATU fakta dari kalimat jika cocok dengan pola,
+    // atau std::nullopt bila tidak ada yang cocok.
+    std::optional<MemoryEntry> Extract(
         const std::string& message) const;
+
+private:
+    std::optional<MemoryEntry> ExtractName(const std::string& message) const;
+    std::optional<MemoryEntry> ExtractCity(const std::string& message) const;
+    std::optional<MemoryEntry> ExtractUniversity(const std::string& message) const;
+    std::optional<MemoryEntry> ExtractFavorite(const std::string& message) const;
 };
 
 }

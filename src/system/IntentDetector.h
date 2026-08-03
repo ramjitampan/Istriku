@@ -27,6 +27,7 @@ private:
     Command DetectApplications(const std::string& msg);
     Command DetectWeb(const std::string& msg);
     Command DetectScreenshot(const std::string& msg);
+    Command DetectPlaySong(const std::string& msg);
     Command DetectVolume(const std::string& msg);
     Command DetectBrightness(const std::string& msg);
     Command DetectWifi(const std::string& msg);

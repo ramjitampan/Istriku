@@ -159,6 +159,22 @@ bool ConfigManager::LoadFromFile()
             m_config.app.ui_mode = a["ui_mode"].get<std::string>();
     }
 
+    // Remote (kontrol dari HP)
+    if (root.contains("remote") && root["remote"].is_object())
+    {
+        auto& r = root["remote"];
+        if (r.contains("enabled") && r["enabled"].is_boolean())
+            m_config.remote.enabled = r["enabled"].get<bool>();
+        if (r.contains("port") && r["port"].is_number_integer())
+            m_config.remote.port = r["port"].get<int>();
+        if (r.contains("token") && r["token"].is_string())
+            m_config.remote.token = r["token"].get<std::string>();
+    }
+
+    // YouTube (auto-play lagu)
+    if (root.contains("youtube_api_key") && root["youtube_api_key"].is_string())
+        m_config.youtube_api_key = root["youtube_api_key"].get<std::string>();
+
     // Persona prompt
     if (root.contains("persona_prompt") && root["persona_prompt"].is_string())
         m_config.persona_prompt = root["persona_prompt"].get<std::string>();

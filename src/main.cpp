@@ -1,6 +1,7 @@
 #include "ai/OllamaClient.h"
 
 #include "chat/ChatController.h"
+#include "chat/CommandRouter.h"
 
 #include "config/ConfigManager.h"
 
@@ -9,18 +10,16 @@
 #include "system/IntentDetector.h"
 #include "system/WindowsController.h"
 
+#include "remote/RemoteServer.h"
+
 #include "ui/TrayWindow.h"
 
-#include "voice/VoiceSession.h"
-#include "voice/WhisperRecognizer.h"
+#include "voice/TextToSpeech.h"
 
 #include "utils/HttpClient.h"
 #include "utils/Logger.h"
-#include "utils/Utf8Sanitizer.h"
-#include "utils/TextNormalizer.h"
 
 #include <cstdlib>
-#include <csignal>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -30,19 +29,9 @@
 
 using namespace Yuki;
 
-static Voice::VoiceSession* g_voiceSession = nullptr;
-
-static void SignalHandler(int)
-{
-    if (g_voiceSession)
-        g_voiceSession->Stop();
-    std::cout << "\nYuki berhenti.\n";
-    std::exit(0);
-}
-
 static std::string ParseModeArg(int argc, char* argv[])
 {
-    for (int i = 1; i < argc - 1; ++i)
+    for (int i = 0; i < argc - 1; ++i)
     {
         if (std::strcmp(argv[i], "--mode") == 0)
         {
@@ -50,6 +39,14 @@ static std::string ParseModeArg(int argc, char* argv[])
         }
     }
     return {};
+}
+
+static std::string Trim(const std::string& s)
+{
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) return {};
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return s.substr(start, end - start + 1);
 }
 
 int main(int argc, char* argv[])
@@ -81,114 +78,97 @@ int main(int argc, char* argv[])
     System::WindowsController windowsController;
     System::IntentDetector intentDetector;
 
+    windowsController.SetYoutubeApiKey(cfg.youtube_api_key);
+
     if (uiMode == "console")
     {
-        std::unique_ptr<Voice::WhisperRecognizer> recognizer;
-        try
-        {
-            recognizer =
-                std::make_unique<Voice::WhisperRecognizer>(cfg.voice);
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr << "[ERROR] " << e.what() << "\n";
-            std::cerr << "Pastikan model ada di: " << cfg.voice.model << "\n";
-            return 1;
-        }
-
-        Voice::VoiceSession voiceSession(
-            std::move(recognizer),
-            [&chat, &windowsController, &intentDetector](const std::string& text) -> std::string
-            {
-                if (text.empty())
-                {
-                    Logger::Info("[Voice] Empty after normalization, ignoring");
-                    return {};
-                }
-
-                System::Command command = intentDetector.Detect(text);
-
-                if (command.type != System::CommandType::Unknown)
-                {
-                    Logger::Info("[Voice] Intent: " + std::string(System::CommandTypeToString(command.type)));
-                    System::CommandResult result = windowsController.Execute(command);
-
-                    if (result.confirmationRequired)
-                    {
-                        return chat.SendMessage(text);
-                    }
-
-                    if (!result.success)
-                    {
-                        Logger::Error("[Voice] Desktop command failed: " + result.message);
-                    }
-                    else
-                    {
-                        Logger::Info("[Voice] Desktop command success: " + result.message);
-                    }
-
-                    return result.message;
-                }
-
-                Logger::Info("[Voice] Intent: None — sending to AI");
-                std::string reply = chat.SendMessage(text);
-                return reply;
-            });
-
-        g_voiceSession = &voiceSession;
-        std::signal(SIGINT, SignalHandler);
-
-        voiceSession.SetRate(cfg.tts.rate);
-        voiceSession.SetVolume(cfg.tts.volume);
-        voiceSession.SetListeningMode(Voice::ListeningMode::AlwaysOn);
-
-        voiceSession.OnStateChanged(
-            [](Voice::VoiceSessionState state)
-            {
-                switch (state)
-                {
-                    case Voice::VoiceSessionState::Idle:
-                        std::cout << "\n[Yuki] idle\n"; break;
-                    case Voice::VoiceSessionState::ListeningWakeWord:
-                        std::cout << "\n[Yuki] Listening Wake Word...\n"; break;
-                    case Voice::VoiceSessionState::RecordingCommand:
-                        std::cout << "\n[Yuki] Recording Command...\n"; break;
-                    case Voice::VoiceSessionState::Thinking:
-                        std::cout << "\n[Yuki] Thinking...\n"; break;
-                    case Voice::VoiceSessionState::Speaking:
-                        std::cout << "\n[Yuki] Speaking...\n"; break;
-                }
-            });
-
-        if (!voiceSession.Start())
-        {
-            std::cerr << "[Voice] Gagal buka microphone!\n";
-            return 1;
-        }
+        Voice::TextToSpeech tts(cfg.tts);
 
         std::cout << "\n===== Yuki AI =====\n";
-        std::cout << "Mode: Voice (ucap 'Yuki...')\n";
-        std::cout << "Ctrl+C untuk keluar.\n\n";
+        std::cout << "Mode: Konsol (ketik perintah)\n";
+        std::cout << "Ketik 'exit' atau 'keluar' untuk berhenti.\n\n";
 
+        std::string line;
         while (true)
         {
-            std::cin.get();
+            std::cout << "> " << std::flush;
+            if (!std::getline(std::cin, line))
+                break;
+
+            std::string text = Trim(line);
+            if (text.empty())
+                continue;
+
+            if (text == "exit" || text == "keluar" || text == "quit")
+                break;
+
+            System::Command command = intentDetector.Detect(text);
+
+            std::string reply;
+            if (command.type != System::CommandType::Unknown)
+            {
+                Logger::Info("[Console] Intent: " +
+                             std::string(System::CommandTypeToString(command.type)));
+
+                System::CommandResult result =
+                    windowsController.Execute(command);
+
+                if (result.confirmationRequired)
+                {
+                    reply = chat.SendMessage(text);
+                }
+                else
+                {
+                    if (!result.success)
+                    {
+                        Logger::Error("[Console] Desktop command failed: " +
+                                      result.message);
+                    }
+                    reply = result.message;
+                }
+            }
+            else
+            {
+                Logger::Info("[Console] Intent: None — sending to AI");
+                reply = chat.SendMessage(text);
+            }
+
+            std::cout << "[Yuki] " << reply << "\n\n";
+            tts.Speak(reply);
         }
+
+        std::cout << "Yuki berhenti.\n";
+        return 0;
     }
-    else
+
+    // Tray mode
+    Chat::CommandRouter router(chat, windowsController, intentDetector, cfg);
+    TrayWindow trayWindow(cfg, router);
+
+    if (!trayWindow.Create())
     {
-        // Tray mode
-        TrayWindow trayWindow(cfg, chat, windowsController, intentDetector);
-
-        if (!trayWindow.Create())
-        {
-            std::cerr << "[ERROR] Gagal membuat tray window.\n";
-            return 1;
-        }
-
-        Logger::Info("Yuki tray mode started");
-        return trayWindow.RunMessageLoop();
+        std::cerr << "[ERROR] Gagal membuat tray window.\n";
+        return 1;
     }
 
-    return 0;
+    // Remote server (kontrol dari HP lewat LAN)
+    std::unique_ptr<Remote::RemoteServer> remoteServer;
+    if (cfg.remote.enabled)
+    {
+        remoteServer = std::make_unique<Remote::RemoteServer>(
+            cfg.remote.port, cfg.remote.token,
+            [&router](const std::string& text) { return router.HandleText(text); });
+
+        if (!remoteServer->Start())
+            Logger::Error("Gagal start RemoteServer (port " +
+                          std::to_string(cfg.remote.port) + ").");
+    }
+
+    Logger::Info("Yuki tray mode started");
+    int exitCode = trayWindow.RunMessageLoop();
+
+    if (remoteServer)
+        remoteServer->Stop();
+
+    return exitCode;
 }

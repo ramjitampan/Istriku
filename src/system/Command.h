@@ -18,6 +18,7 @@ enum class CommandType
     OpenYoutubeMusic,
     OpenGithub,
     Screenshot,
+    PlaySong,
     Volume,
     Brightness,
     WifiOn,
@@ -40,6 +41,7 @@ inline std::string_view CommandTypeToString(CommandType type) noexcept
         case CommandType::OpenYoutubeMusic: return "OpenYoutubeMusic";
         case CommandType::OpenGithub: return "OpenGithub";
         case CommandType::Screenshot: return "Screenshot";
+        case CommandType::PlaySong: return "PlaySong";
         case CommandType::Volume: return "Volume";
         case CommandType::Brightness: return "Brightness";
         case CommandType::WifiOn: return "WifiOn";
@@ -52,6 +54,7 @@ struct Command
 {
     CommandType type = CommandType::Unknown;
     int parameter = -1;
+    std::string query;
     bool requiresConfirmation = false;
 };
 

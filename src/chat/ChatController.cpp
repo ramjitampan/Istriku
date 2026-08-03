@@ -24,55 +24,21 @@ ChatController::ChatController(
 {
 }
 
-static std::string ParseCommandFromResponse(
-    const std::string& response,
-    Yuki::System::Command& commandOut)
+static std::string StripCommandTags(const std::string& response)
 {
-    std::regex cmdRegex(R"(\[CMD:(\w+)\s*(\d*)\])");
-    std::smatch match;
+    // AI murni ngobrol — buang sisa tag [CMD:...] yang mungkin terhalusinasi
+    // model biar gak tampil mentah. Tag ini TIDAK pernah dieksekusi.
+    std::string cleaned = std::regex_replace(
+        response,
+        std::regex(R"(\[CMD:\w+\s*\d*\])"),
+        "");
 
-    if (std::regex_search(response, match, cmdRegex))
-    {
-        std::string cmdName = match[1].str();
-        std::string paramStr = match[2].str();
-        int param = paramStr.empty() ? -1 : std::stoi(paramStr);
+    size_t start = cleaned.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos)
+        return {};
 
-        // Map string to CommandType
-        auto& ct = commandOut.type;
-        if (cmdName == "OpenVSCode") ct = Yuki::System::CommandType::OpenVSCode;
-        else if (cmdName == "OpenSteam") ct = Yuki::System::CommandType::OpenSteam;
-        else if (cmdName == "OpenExplorer") ct = Yuki::System::CommandType::OpenExplorer;
-        else if (cmdName == "OpenYoutubeMusic") ct = Yuki::System::CommandType::OpenYoutubeMusic;
-        else if (cmdName == "OpenGithub") ct = Yuki::System::CommandType::OpenGithub;
-        else if (cmdName == "Screenshot") ct = Yuki::System::CommandType::Screenshot;
-        else if (cmdName == "VolumeUp") ct = Yuki::System::CommandType::Volume;
-        else if (cmdName == "VolumeDown") { ct = Yuki::System::CommandType::Volume; param = -2; }
-        else if (cmdName == "Mute") { ct = Yuki::System::CommandType::Volume; param = 0; }
-        else if (cmdName == "BrightnessUp") { ct = Yuki::System::CommandType::Brightness; param = -2; }
-        else if (cmdName == "BrightnessDown") { ct = Yuki::System::CommandType::Brightness; param = -3; }
-        else if (cmdName == "Brightness") ct = Yuki::System::CommandType::Brightness;
-        else if (cmdName == "Shutdown") ct = Yuki::System::CommandType::Shutdown;
-        else if (cmdName == "Restart") ct = Yuki::System::CommandType::Restart;
-        else if (cmdName == "Sleep") ct = Yuki::System::CommandType::Sleep;
-        else if (cmdName == "Lock") ct = Yuki::System::CommandType::Lock;
-        else if (cmdName == "Logout") ct = Yuki::System::CommandType::Logout;
-        else if (cmdName == "WifiOn") ct = Yuki::System::CommandType::WifiOn;
-        else if (cmdName == "WifiOff") ct = Yuki::System::CommandType::WifiOff;
-
-        if (ct != Yuki::System::CommandType::Unknown)
-        {
-            commandOut.parameter = param;
-            if (ct == Yuki::System::CommandType::Shutdown ||
-                ct == Yuki::System::CommandType::Restart ||
-                ct == Yuki::System::CommandType::Sleep)
-                commandOut.requiresConfirmation = true;
-
-            // Return response without the [CMD:...] tag
-            return std::regex_replace(response, cmdRegex, "");
-        }
-    }
-
-    return response;
+    size_t end = cleaned.find_last_not_of(" \t\r\n");
+    return cleaned.substr(start, end - start + 1);
 }
 
 std::string ChatController::SendMessage(const std::string& message)
@@ -134,9 +100,9 @@ std::string ChatController::SendMessage(const std::string& message)
 
     if (m_memoryRules.ShouldRemember(message))
     {
-        auto memories = m_memoryExtractor.Extract(message);
-        for (const auto& memory : memories)
-            m_memoryManager.Remember(memory);
+        auto memory = m_memoryExtractor.Extract(message);
+        if (memory)
+            m_memoryManager.Remember(*memory);
     }
 
     std::string prompt;
@@ -158,19 +124,11 @@ std::string ChatController::SendMessage(const std::string& message)
         return {};
     }
 
-    // Step 3: Parse [CMD:...] dari response AI
-    Yuki::System::Command aiCommand;
-    std::string cleanReply = ParseCommandFromResponse(reply, aiCommand);
+    // Step 3: AI murni ngobrol — respons tidak pernah dieksekusi jadi perintah.
+    std::string cleanReply = StripCommandTags(reply);
 
-    if (aiCommand.type != Yuki::System::CommandType::Unknown)
-    {
-        m_conversation.AddAssistantMessage(cleanReply);
-        std::string execReply = HandleDesktopCommand(aiCommand);
-        return cleanReply + " " + execReply;
-    }
-
-    m_conversation.AddAssistantMessage(reply);
-    return reply;
+    m_conversation.AddAssistantMessage(cleanReply);
+    return cleanReply;
 }
 
 void ChatController::ClearConversation()

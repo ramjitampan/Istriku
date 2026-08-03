@@ -115,6 +115,32 @@ static void TestIntentDetector()
         Test("Screenshot: 'ss'", cmd.type == Yuki::System::CommandType::Screenshot);
     }
 
+    // PlaySong
+    {
+        auto cmd = detector.Detect("putar lagu deargod");
+        Test("PlaySong: 'putar lagu deargod'",
+            cmd.type == Yuki::System::CommandType::PlaySong &&
+            cmd.query == "deargod");
+
+        cmd = detector.Detect("buka lagu dear god");
+        Test("PlaySong: 'buka lagu dear god'",
+            cmd.type == Yuki::System::CommandType::PlaySong &&
+            cmd.query == "dear god");
+
+        cmd = detector.Detect("play hello");
+        Test("PlaySong: 'play hello'",
+            cmd.type == Yuki::System::CommandType::PlaySong &&
+            cmd.query == "hello");
+
+        cmd = detector.Detect("mainkan lagu");
+        Test("PlaySong: 'mainkan lagu' tanpa judul -> Unknown",
+            cmd.type == Yuki::System::CommandType::Unknown);
+
+        cmd = detector.Detect("buka youtube music");
+        Test("PlaySong: 'buka youtube music' tetap OpenYoutubeMusic",
+            cmd.type == Yuki::System::CommandType::OpenYoutubeMusic);
+    }
+
     // Volume
     {
         auto cmd = detector.Detect("volume 40");

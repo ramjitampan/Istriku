@@ -41,6 +41,14 @@
     "confirm_sleep": true
   },
 
+  "remote": {
+    "enabled": true,
+    "port": 8123,
+    "token": ""
+  },
+
+  "youtube_api_key": "",
+
   "app": {
     "ui_mode": "tray"
   },

@@ -37,11 +37,14 @@ public:
     CommandResult Execute(const Command& command);
     int GetCurrentVolumePercent();
 
+    void SetYoutubeApiKey(const std::string& apiKey) { m_youtubeApiKey = apiKey; }
+
 private:
     CommandResult ExecuteSystemCommand(const Command& command);
     CommandResult ExecuteOpenApplication(const Command& command);
     CommandResult ExecuteOpenWeb(const Command& command);
     CommandResult ExecuteScreenshot();
+    CommandResult ExecutePlaySong(const Command& command);
     CommandResult ExecuteVolume(const Command& command);
     CommandResult ExecuteBrightness(const Command& command);
     CommandResult ExecuteWifi(const Command& command);
@@ -56,7 +59,7 @@ private:
     CommandResult OpenSteamApp();
     CommandResult OpenExplorerApp();
 
-    CommandResult OpenUrlAction(const std::string& url);
+    CommandResult OpenUrlAction(const std::string& url, const std::string& successMessage);
 
     static bool SaveBitmapToFile(HBITMAP hBitmap, const std::string& filePath);
     static void FillGammaRamp(int percent, WORD ramp[256*3]);
@@ -64,6 +67,8 @@ private:
     static CommandResult SetBrightnessWmi(int percent);
     static CommandResult SetBrightnessGammaRamp(int percent);
     static CommandResult SetBrightnessGamma(int percent);
+
+    std::string m_youtubeApiKey;
 
     static std::string GetProgramFilesPath();
     static std::string GetLocalAppDataPath();

@@ -4,7 +4,10 @@
 #include <shellapi.h>
 #include <powrprof.h>
 #include <mmsystem.h>
+#include <winhttp.h>
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -17,6 +20,103 @@
 namespace Yuki::System {
 
 namespace fs = std::filesystem;
+
+namespace {
+
+// Minimal HTTPS GET via WinHTTP — dipakai untuk pencarian lagu (YouTube Data API).
+std::string HttpGet(const std::string& url, long timeoutMs = 15000)
+{
+    std::string result;
+
+    HINTERNET hSession = WinHttpOpen(L"Yuki/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
+    if (!hSession)
+        return result;
+
+    URL_COMPONENTS urlComp{};
+    urlComp.dwStructSize = sizeof(urlComp);
+    wchar_t host[256] = {};
+    wchar_t path[2048] = {};
+    urlComp.lpszHostName = host;
+    urlComp.dwHostNameLength = 256;
+    urlComp.lpszUrlPath = path;
+    urlComp.dwUrlPathLength = 2048;
+
+    std::wstring wurl(url.begin(), url.end());
+    if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &urlComp))
+    {
+        WinHttpCloseHandle(hSession);
+        return result;
+    }
+
+    bool isHttps = (urlComp.nScheme == INTERNET_SCHEME_HTTPS);
+    HINTERNET hConnect = WinHttpConnect(hSession, host,
+        isHttps ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 0);
+    if (!hConnect)
+    {
+        WinHttpCloseHandle(hSession);
+        return result;
+    }
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path,
+        nullptr, nullptr, nullptr, isHttps ? WINHTTP_FLAG_SECURE : 0);
+    if (!hRequest)
+    {
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return result;
+    }
+
+    WinHttpSetTimeouts(hRequest, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+
+    if (WinHttpSendRequest(hRequest, nullptr, 0, nullptr, 0, 0, 0) &&
+        WinHttpReceiveResponse(hRequest, nullptr))
+    {
+        DWORD available = 0;
+        while (WinHttpQueryDataAvailable(hRequest, &available) && available > 0)
+        {
+            std::vector<char> buf(available);
+            DWORD read = 0;
+            if (!WinHttpReadData(hRequest, buf.data(), available, &read) || read == 0)
+                break;
+            result.append(buf.data(), read);
+        }
+    }
+
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+    return result;
+}
+
+std::string UrlEncode(const std::string& value)
+{
+    std::ostringstream oss;
+    oss << std::hex << std::uppercase;
+    for (unsigned char c : value)
+    {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+            oss << c;
+        else
+            oss << '%' << std::setw(2) << static_cast<int>(c);
+    }
+    return oss.str();
+}
+
+std::string ExtractFirstVideoId(const std::string& jsonBody)
+{
+    static const std::string key = "\"videoId\":\"";
+    size_t pos = jsonBody.find(key);
+    if (pos == std::string::npos)
+        return {};
+    pos += key.size();
+    size_t end = jsonBody.find('"', pos);
+    if (end == std::string::npos)
+        return {};
+    return jsonBody.substr(pos, end - pos);
+}
+
+} // anonymous namespace
 
 // MinGW fix: define CLSID/IID lokal biar gak perlu link uuid.lib
 static const GUID CLSID_MMDeviceEnumerator_Local =
@@ -48,6 +148,9 @@ CommandResult WindowsController::Execute(const Command& command)
 
         case CommandType::Screenshot:
             return ExecuteScreenshot();
+
+        case CommandType::PlaySong:
+            return ExecutePlaySong(command);
 
         case CommandType::Volume:
             return ExecuteVolume(command);
@@ -316,14 +419,14 @@ CommandResult WindowsController::ExecuteOpenWeb(const Command& command)
 {
     switch (command.type)
     {
-        case CommandType::OpenYoutubeMusic: return OpenUrlAction("https://music.youtube.com");
-        case CommandType::OpenGithub:       return OpenUrlAction("https://github.com");
+        case CommandType::OpenYoutubeMusic: return OpenUrlAction("https://music.youtube.com", "Membuka YouTube Music.");
+        case CommandType::OpenGithub:       return OpenUrlAction("https://github.com", "Membuka GitHub.");
         default:
             return {false, "Website tidak dikenal.", false, CommandType::Unknown};
     }
 }
 
-CommandResult WindowsController::OpenUrlAction(const std::string& url)
+CommandResult WindowsController::OpenUrlAction(const std::string& url, const std::string& successMessage)
 {
     HINSTANCE hResult = ShellExecuteA(nullptr, "open", url.c_str(),
         nullptr, nullptr, SW_SHOWNORMAL);
@@ -334,7 +437,7 @@ CommandResult WindowsController::OpenUrlAction(const std::string& url)
         return {false, "Gagal membuka browser.", false, CommandType::Unknown};
     }
 
-    return {true, "Membuka " + url, false, CommandType::Unknown};
+    return {true, successMessage, false, CommandType::Unknown};
 }
 
 // ===================== SCREENSHOT =====================
@@ -412,6 +515,35 @@ bool WindowsController::SaveBitmapToFile(HBITMAP hBitmap, const std::string& fil
 
     Gdiplus::GdiplusShutdown(gdiplusToken);
     return result;
+}
+
+// ===================== PLAY SONG (YouTube Music) =====================
+
+CommandResult WindowsController::ExecutePlaySong(const Command& command)
+{
+    std::string query = command.query;
+    if (query.empty())
+        return {false, "Judul lagu kosong.", false, CommandType::PlaySong};
+
+    std::string url;
+
+    // Auto-play: cari videoId pertama lewat YouTube Data API (butuh key).
+    if (!m_youtubeApiKey.empty())
+    {
+        std::string apiUrl =
+            "https://www.googleapis.com/youtube/v3/search?part=id&type=video&maxResults=1&q="
+            + UrlEncode(query) + "&key=" + UrlEncode(m_youtubeApiKey);
+
+        std::string videoId = ExtractFirstVideoId(HttpGet(apiUrl));
+        if (!videoId.empty())
+            url = "https://music.youtube.com/watch?v=" + videoId;
+    }
+
+    // Fallback: tanpa key / gagal cari → buka halaman pencarian.
+    if (url.empty())
+        url = "https://music.youtube.com/search?q=" + UrlEncode(query);
+
+    return OpenUrlAction(url, "Memutar: " + query);
 }
 
 // ===================== VOLUME =====================
