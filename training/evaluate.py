@@ -10,6 +10,8 @@ import torch
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+from yukihana_prompt import SYSTEM_PROMPT
+
 
 PROMPTS = [
     "Yuki, ingat bahwa project Nebula menggunakan SQLite.",
@@ -25,7 +27,10 @@ def generate_responses(model, tokenizer, max_new_tokens: int) -> list[str]:
     responses: list[str] = []
     for prompt in PROMPTS:
         text = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
+            [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
             tokenize=False,
             add_generation_prompt=True,
         )

@@ -15,6 +15,8 @@ from peft import AutoPeftModelForCausalLM, PeftConfig
 from peft.tuners.lora import LoraLayer
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+from yukihana_prompt import SYSTEM_PROMPT
+
 
 EXACT_TESTS = [
     {
@@ -135,7 +137,10 @@ def generate_responses(model, tokenizer, prompts: list[str], max_new_tokens: int
     model.eval()
     responses: list[str] = []
     for prompt in prompts:
-        messages = [{"role": "user", "content": prompt}]
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
         text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -330,22 +335,56 @@ def main() -> None:
         str(adapter_path), quantization_config=quantization, device_map="auto", dtype=compute_dtype
     )
     adapter_info = inspect_adapter(adapter_model, adapter_path, peft_config)
-    adapter_responses = generate_responses(adapter_model, tokenizer, prompts, args.max_new_tokens)
+    exact_adapter_responses = generate_responses(
+        adapter_model,
+        tokenizer,
+        [test["prompt"] for test in EXACT_TESTS],
+        args.max_new_tokens,
+    )
+    exact_rows = evaluate_tests(
+        EXACT_TESTS,
+        base_responses[:len(EXACT_TESTS)],
+        exact_adapter_responses,
+    )
+    exact_passes = sum(row["adapter_pass"] for row in exact_rows)
+    exact_threshold_met = exact_passes / len(EXACT_TESTS) >= 0.8
+
+    if exact_threshold_met:
+        remaining_tests = NEAR_TESTS + TOOL_PROTOCOL_TESTS
+        remaining_adapter_responses = generate_responses(
+            adapter_model,
+            tokenizer,
+            [test["prompt"] for test in remaining_tests],
+            args.max_new_tokens,
+        )
+        remaining_rows = evaluate_tests(
+            remaining_tests,
+            base_responses[len(EXACT_TESTS):],
+            remaining_adapter_responses,
+        )
+    else:
+        remaining_rows = []
+        print(
+            f"STOP: exact-training threshold failed ({exact_passes}/{len(EXACT_TESTS)}). "
+            "Generalization tests were skipped."
+        )
     adapter_peak = torch.cuda.max_memory_allocated() / (1024**3)
     del adapter_model
     gc.collect()
     torch.cuda.empty_cache()
 
-    rows = evaluate_tests(all_tests, base_responses, adapter_responses)
-    exact_rows = rows[:len(EXACT_TESTS)]
-    exact_passes = sum(row["adapter_pass"] for row in exact_rows)
-    near_rows = rows[len(EXACT_TESTS):len(EXACT_TESTS) + len(NEAR_TESTS)]
+    rows = exact_rows + remaining_rows
+    near_rows = remaining_rows[:len(NEAR_TESTS)] if exact_threshold_met else []
     near_passes = sum(row["adapter_pass"] for row in near_rows)
+    generalization_passes = sum(row["adapter_pass"] for row in remaining_rows)
+    tests_by_name = {test["name"]: test for test in all_tests}
+    tool_rows = [row for row in rows if tests_by_name[row["test"]]["kind"] == "tool"]
+    personality_rows = [row for row in rows if tests_by_name[row["test"]]["kind"] == "personality"]
     log_info = read_training_log(adapter_path)
 
-    if exact_passes <= 2:
+    if not exact_threshold_met:
         verdict = "E. MULTIPLE ISSUES"
-        evidence = "Exact training prompts mostly fail; underfitting is present and preprocessing/configuration must be checked."
+        evidence = "Exact-training pass rate is below 80%; generalization was stopped as required."
     elif near_passes <= 2:
         verdict = "E. MULTIPLE ISSUES"
         evidence = "Exact prompts are learned but near-training generalization is weak; underfitting and dataset size both contribute."
@@ -355,6 +394,13 @@ def main() -> None:
     else:
         verdict = "C. DATASET TOO SMALL"
         evidence = "Exact and near tests pass; remaining weakness is primarily broader coverage."
+
+    if not exact_threshold_met:
+        experiment_verdict = "FAIL"
+    elif generalization_passes == len(remaining_rows):
+        experiment_verdict = "PASS"
+    else:
+        experiment_verdict = "PARTIAL"
 
     report = {
         "verdict": verdict,
@@ -379,7 +425,20 @@ def main() -> None:
         "serialized_training_tool_sample": serialized,
         "tests": rows,
         "exact_passes": f"{exact_passes}/{len(EXACT_TESTS)}",
-        "near_passes": f"{near_passes}/{len(NEAR_TESTS)}",
+        "exact_training_pass_rate": exact_passes / len(EXACT_TESTS),
+        "exact_threshold_met": exact_threshold_met,
+        "near_passes": f"{near_passes}/{len(NEAR_TESTS)}" if exact_threshold_met else "SKIPPED",
+        "generalization_pass_rate": (
+            generalization_passes / len(remaining_rows) if remaining_rows else None
+        ),
+        "tool_call_validity_rate": (
+            sum(row["adapter_pass"] for row in tool_rows) / len(tool_rows) if tool_rows else None
+        ),
+        "personality_result": (
+            f"{sum(row['adapter_pass'] for row in personality_rows)}/{len(personality_rows)}"
+            if personality_rows else "SKIPPED"
+        ),
+        "experiment_verdict": experiment_verdict,
         "peak_vram_base_gib": base_peak,
         "peak_vram_adapter_gib": adapter_peak,
     }
