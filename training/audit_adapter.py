@@ -193,10 +193,6 @@ def read_training_log(adapter_path: Path) -> dict[str, Any]:
     history = state.get("log_history", [])
     train_entries = [entry for entry in history if "loss" in entry]
     eval_entries = [entry for entry in history if "eval_loss" in entry]
-    configured_targets = peft_config.target_modules
-    if isinstance(configured_targets, str):
-        configured_targets = [configured_targets]
-
     return {
         "trainer_state_path": str(state_path),
         "initial_training_loss": train_entries[0]["loss"] if train_entries else None,
@@ -215,6 +211,10 @@ def inspect_adapter(model, adapter_path: Path, peft_config: PeftConfig) -> dict[
     target_leaf_names = sorted({name.rsplit(".", 1)[-1] for name in lora_modules})
     weight_files = list(adapter_path.glob("adapter_model.*"))
     weight_bytes = sum(path.stat().st_size for path in weight_files)
+    configured_targets = peft_config.target_modules
+    if isinstance(configured_targets, str):
+        configured_targets = [configured_targets]
+
     return {
         "r": peft_config.r,
         "lora_alpha": peft_config.lora_alpha,
