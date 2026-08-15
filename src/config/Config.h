@@ -45,6 +45,19 @@ struct OllamaConfig
     std::string model = "gemma3:4b";
 };
 
+struct AIConfig
+{
+    std::string backend = "ollama";
+};
+
+struct HuggingFaceConfig
+{
+    std::string model;
+    std::string endpoint = "https://router.huggingface.co/v1/chat/completions";
+    std::string token_env = "HF_TOKEN";
+    int max_tokens = 1024;
+};
+
 struct MemoryConfig
 {
     std::string database = "memory.db";
@@ -73,7 +86,9 @@ struct Config
 {
     VoiceConfig voice;
     TTSConfig tts;
+    AIConfig ai;
     OllamaConfig ollama;
+    HuggingFaceConfig huggingface;
     MemoryConfig memory;
     SystemConfig system;
     AppConfig app;

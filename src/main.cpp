@@ -1,4 +1,5 @@
 #include "ai/OllamaClient.h"
+#include "ai/HuggingFaceClient.h"
 
 #include "chat/ChatController.h"
 #include "chat/CommandRouter.h"
@@ -24,6 +25,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <algorithm>
 
 #include <windows.h>
 
@@ -64,8 +66,35 @@ int main(int argc, char* argv[])
 
     Utils::HttpClient httpClient;
 
-    auto backend =
-        std::make_unique<AI::OllamaClient>(httpClient, cfg.ollama);
+    std::string backendName = cfg.ai.backend;
+    std::transform(backendName.begin(), backendName.end(), backendName.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    std::unique_ptr<AI::AIBackend> backend;
+    if (backendName == "huggingface")
+    {
+        const std::string token = AI::HuggingFaceClient::ReadTokenFromEnvironment(
+            cfg.huggingface.token_env);
+        if (!cfg.huggingface.model.empty() &&
+            !cfg.huggingface.endpoint.empty() && !token.empty())
+        {
+            backend = std::make_unique<AI::HuggingFaceClient>(cfg.huggingface);
+            Logger::Info("Using Hugging Face backend: " + cfg.huggingface.model);
+        }
+        else
+        {
+            Logger::Warning(
+                "Hugging Face configuration or token is missing; falling back to Ollama.");
+        }
+    }
+    else if (backendName != "ollama")
+    {
+        Logger::Warning("Unknown AI backend '" + cfg.ai.backend +
+                        "'; falling back to Ollama.");
+    }
+
+    if (!backend)
+        backend = std::make_unique<AI::OllamaClient>(httpClient, cfg.ollama);
 
     Memory::MemoryManager memoryManager(cfg.memory);
 

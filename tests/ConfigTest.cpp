@@ -48,7 +48,9 @@ int main()
         f << R"({
             "voice": { "enabled": true, "model": "custom.bin", "language": "en", "threads": 2, "vad_threshold": 50.0, "wake_word": "hey" },
             "tts": { "enabled": true, "volume": 90, "rate": -2 },
+            "ai": { "backend": "huggingface" },
             "ollama": { "host": "http://10.0.0.1:11434", "model": "llama2" },
+            "huggingface": { "model": "ramzy/Yukihana", "endpoint": "https://hf.test/v1/chat/completions", "token_env": "TEST_HF_TOKEN", "max_tokens": 512 },
             "memory": { "database": "test.db" },
             "system": { "confirm_shutdown": false, "confirm_restart": false, "confirm_sleep": true }
         })";
@@ -68,6 +70,11 @@ int main()
         Test("tts rate", cfg.tts.rate == -2);
         Test("ollama host", cfg.ollama.host == "http://10.0.0.1:11434");
         Test("ollama model", cfg.ollama.model == "llama2");
+        Test("AI backend", cfg.ai.backend == "huggingface");
+        Test("Hugging Face model", cfg.huggingface.model == "ramzy/Yukihana");
+        Test("Hugging Face endpoint", cfg.huggingface.endpoint == "https://hf.test/v1/chat/completions");
+        Test("Hugging Face token env", cfg.huggingface.token_env == "TEST_HF_TOKEN");
+        Test("Hugging Face max tokens", cfg.huggingface.max_tokens == 512);
         Test("memory database", cfg.memory.database == "test.db");
         Test("confirm_shutdown false", !cfg.system.confirm_shutdown);
         Test("confirm_restart false", !cfg.system.confirm_restart);

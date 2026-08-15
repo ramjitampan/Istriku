@@ -1,12 +1,17 @@
 #include "memory/SQLiteMemoryStorage.h"
 
+#include <filesystem>
 #include <iostream>
 
 using namespace Yuki::Memory;
 
 int main()
 {
-    SQLiteMemoryStorage storage;
+    const std::filesystem::path databasePath = "memory_test.db";
+    std::filesystem::remove(databasePath);
+
+    {
+    SQLiteMemoryStorage storage(databasePath.string());
 
     std::cout << "===== Memory Test =====\n\n";
 
@@ -88,6 +93,9 @@ int main()
 
     std::cout
         << "\n===== TEST FINISHED =====\n";
+    }
+
+    std::filesystem::remove(databasePath);
 
     return 0;
 }

@@ -57,6 +57,7 @@ set(SOURCES
     src/utils/StringFuzzy.cpp
 
     src/ai/OllamaClient.cpp
+    src/ai/HuggingFaceClient.cpp
 
     src/chat/ChatController.cpp
     src/chat/CommandRouter.cpp
@@ -87,6 +88,11 @@ add_executable(OllamaTest
     tests/OllamaClientTest.cpp
     src/ai/OllamaClient.cpp src/utils/HttpClient.cpp
     src/utils/Json.cpp src/utils/Logger.cpp
+)
+add_executable(HuggingFaceBackendTest
+    tests/HuggingFaceBackendTest.cpp
+    src/ai/HuggingFaceClient.cpp src/utils/HttpClient.cpp
+    src/utils/Logger.cpp
 )
 add_executable(MemoryTest
     tests/MemoryTest.cpp
@@ -153,6 +159,7 @@ target_include_directories(Yuki PRIVATE
     third_party/sqlite
 )
 target_include_directories(OllamaTest PRIVATE src third_party)
+target_include_directories(HuggingFaceBackendTest PRIVATE src third_party)
 target_include_directories(MemoryTest PRIVATE src third_party third_party/sqlite)
 target_include_directories(ExtractorTest PRIVATE src)
 target_include_directories(RetrieverTest PRIVATE src third_party third_party/sqlite)
@@ -180,6 +187,7 @@ target_link_libraries(Yuki PRIVATE
     user32 gdi32 winhttp gdiplus ole32 oleaut32 uuid powrprof winmm sapi advapi32 shell32 ws2_32
 )
 target_link_libraries(OllamaTest PRIVATE user32 gdi32 winhttp)
+target_link_libraries(HuggingFaceBackendTest PRIVATE user32 gdi32 winhttp)
 target_link_libraries(MemoryTest PRIVATE user32 gdi32)
 target_link_libraries(RetrieverTest PRIVATE user32 gdi32)
 target_link_libraries(PromptBuilderTest PRIVATE user32 gdi32)

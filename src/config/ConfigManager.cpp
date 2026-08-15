@@ -131,6 +131,28 @@ bool ConfigManager::LoadFromFile()
             m_config.ollama.model = o["model"].get<std::string>();
     }
 
+    // AI backend selection
+    if (root.contains("ai") && root["ai"].is_object())
+    {
+        auto& a = root["ai"];
+        if (a.contains("backend") && a["backend"].is_string())
+            m_config.ai.backend = a["backend"].get<std::string>();
+    }
+
+    // Hugging Face Inference Providers
+    if (root.contains("huggingface") && root["huggingface"].is_object())
+    {
+        auto& h = root["huggingface"];
+        if (h.contains("model") && h["model"].is_string())
+            m_config.huggingface.model = h["model"].get<std::string>();
+        if (h.contains("endpoint") && h["endpoint"].is_string())
+            m_config.huggingface.endpoint = h["endpoint"].get<std::string>();
+        if (h.contains("token_env") && h["token_env"].is_string())
+            m_config.huggingface.token_env = h["token_env"].get<std::string>();
+        if (h.contains("max_tokens") && h["max_tokens"].is_number_integer())
+            m_config.huggingface.max_tokens = h["max_tokens"].get<int>();
+    }
+
     // Memory
     if (root.contains("memory") && root["memory"].is_object())
     {
@@ -194,6 +216,7 @@ void ConfigManager::LogConfig() const
     else
         Logger::Info("Voice disabled");
 
+    Logger::Info("AI backend: " + m_config.ai.backend);
     Logger::Info("Ollama model: " + m_config.ollama.model);
     Logger::Info("Database: " + m_config.memory.database);
 }

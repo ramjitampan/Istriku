@@ -10,3 +10,9 @@ memory.db
 
 # Mengabaikan file konfigurasi IDE bawaan VS Code (opsional)
 .vscode/
+
+# Local fine-tuning artifacts and model caches
+training/outputs/
+training/checkpoints/
+training/.cache/
+training/wandb/

@@ -26,9 +26,20 @@
     "rate": 0
   },
 
+  "ai": {
+    "backend": "ollama"
+  },
+
   "ollama": {
     "host": "http://127.0.0.1:11434",
     "model": "gemma3:4b"
+  },
+
+  "huggingface": {
+    "model": "",
+    "endpoint": "https://router.huggingface.co/v1/chat/completions",
+    "token_env": "HF_TOKEN",
+    "max_tokens": 1024
   },
 
   "memory": {
