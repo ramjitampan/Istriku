@@ -82,7 +82,7 @@ def classify(messages: list[dict[str, str]]) -> str:
 
 
 def tool_agent_example(index: int) -> dict[str, Any]:
-    project = PROJECTS[index % len(PROJECTS)]
+    project = f"{PROJECTS[index % len(PROJECTS)]}-{index + 1}"
     filename = FILES[index % len(FILES)]
     variant = index % 8
     if variant == 0:
@@ -121,7 +121,8 @@ def tool_agent_example(index: int) -> dict[str, Any]:
 
 
 def coding_example(index: int) -> dict[str, Any]:
-    filename = FILES[index % len(FILES)]
+    original = FILES[index % len(FILES)]
+    filename = f"{original.removesuffix('.cpp')}{index + 1}.cpp"
     variant = index % 5
     if variant == 0:
         messages = [user(f"Build gagal setelah perubahan {filename}. Cari penyebabnya."),
@@ -133,7 +134,7 @@ def coding_example(index: int) -> dict[str, Any]:
     elif variant == 1:
         messages = [user(f"Perbaiki {filename}."), assistant(tool_call("read_file", {"path": f"src/{filename}"})),
                     tool("bool Send() { return client.Post(); }"),
-                    assistant(tool_call("search_files", {"query": f"{filename.replace('.cpp', '')}|Send\("})),
+                    assistant(tool_call("search_files", {"query": rf"{filename.removesuffix('.cpp')}|Send\("})),
                     tool(f"tests/{filename.replace('.cpp', 'Test.cpp')}\nsrc/{filename}"),
                     assistant("Aku sudah membaca implementasi dan menemukan test terkait. Aku akan mendiagnosis kegagalan dari keduanya sebelum membuat diff.")]
     elif variant == 2:
@@ -151,7 +152,7 @@ def coding_example(index: int) -> dict[str, Any]:
 
 
 def memory_reminder_example(index: int) -> dict[str, Any]:
-    project = PROJECTS[index % len(PROJECTS)]
+    project = f"{PROJECTS[index % len(PROJECTS)]}-{index + 1}"
     variant = index % 7
     if variant == 0:
         messages = [user(f"Ingat bahwa project {project} memakai SQLite."),
@@ -191,17 +192,18 @@ def memory_reminder_example(index: int) -> dict[str, Any]:
 
 
 def failure_example(index: int) -> dict[str, Any]:
-    filename = FILES[index % len(FILES)]
+    original = FILES[index % len(FILES)]
+    filename = f"{original.removesuffix('.cpp')}{index + 1}.cpp"
     variants = [
         [user(f"Baca src/missing/{filename}."), assistant(tool_call("read_file", {"path": f"src/missing/{filename}"})),
          tool({"success": False, "error": "file not found"}), assistant("File tidak ditemukan. Aku akan mencari nama simbol atau file terkait, bukan mengarang isinya.")],
         [user(f"Baca secrets/{filename}."), assistant(tool_call("read_file", {"path": f"secrets/{filename}"})),
          tool({"success": False, "error": "permission denied"}), assistant("Akses ditolak. Aku tidak akan melewati permission; akses yang tepat harus diberikan terlebih dahulu.")],
-        [user("Hapus memory database lama."), assistant(tool_call("memory_search", {"query": "database lama", "top_k": 5})),
-         tool({"results": [{"id": 1, "content": "Atlas memakai SQLite"}, {"id": 2, "content": "Nebula memakai SQLite"}]}),
+        [user(f"Hapus memory database lama untuk konteks {index + 1}."), assistant(tool_call("memory_search", {"query": f"database lama konteks {index + 1}", "top_k": 5})),
+         tool({"results": [{"id": 2000 + index * 2, "content": "Atlas memakai SQLite"}, {"id": 2001 + index * 2, "content": "Nebula memakai SQLite"}]}),
          assistant("Ada dua kandidat yang ambigu. Memory Atlas atau Nebula yang ingin kamu hapus?")],
-        [user("Ingatkan aku tanggal 5."), assistant("Tanggal 5 pada bulan dan tahun apa, pukul berapa, dan untuk kegiatan apa?")],
-        [user("Cek screenshot rusak.png."), assistant(tool_call("inspect_image", {"path": "rusak.png", "prompt": "Read visible errors."})),
+        [user(f"Ingatkan aku tanggal 5 untuk tugas nomor {index + 1}."), assistant("Tanggal 5 pada bulan dan tahun apa, pukul berapa, dan untuk kegiatan apa?")],
+        [user(f"Cek screenshot rusak-{index + 1}.png."), assistant(tool_call("inspect_image", {"path": f"rusak-{index + 1}.png", "prompt": "Read visible errors."})),
          tool({"success": False, "error": "unreadable image"}), assistant("Gambar tidak terbaca. Kirim ulang file valid atau tempelkan teks error; aku tidak akan menebak isinya.")],
     ]
     return record(variants[index % len(variants)], "failure_ambiguity")
@@ -218,7 +220,9 @@ def personality_example(index: int) -> dict[str, Any]:
     ]
     prompt, response = prompts[index % len(prompts)]
     project = PROJECTS[index % len(PROJECTS)]
-    return record([user(prompt.replace("coding", f"coding {project}")), assistant(response.replace("Yukihana", project if index % 9 == 8 else "Yukihana"))], "personality")
+    contextual_prompt = prompt.replace("coding", f"coding {project}")
+    contextual_prompt = f"{contextual_prompt} (konteks {project}-{index + 1})"
+    return record([user(contextual_prompt), assistant(response)], "personality")
 
 
 def safety_example(index: int) -> dict[str, Any]:
@@ -268,6 +272,11 @@ def build_train(source_path: Path) -> list[dict[str, Any]]:
     for category, target in TARGETS.items():
         index = 0
         while counts[category] < target:
+            if index >= 10_000:
+                raise RuntimeError(
+                    f"Could not generate enough unique {category} records: "
+                    f"{counts[category]}/{target}"
+                )
             candidate = FACTORIES[category](index)
             index += 1
             key = fingerprint(candidate)
@@ -288,6 +297,10 @@ def build_validation(train_records: list[dict[str, Any]]) -> list[dict[str, Any]
     train_fingerprints = {fingerprint(item) for item in train_records}
     index = 1000
     while len(records) < 25:
+        if index >= 11_000:
+            raise RuntimeError(
+                f"Could not generate enough unique validation records: {len(records)}/25"
+            )
         candidate = factories[len(records) % len(factories)](index)
         index += 1
         key = fingerprint(candidate)
