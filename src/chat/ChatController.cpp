@@ -1,18 +1,41 @@
 #include "ChatController.h"
 #include "../ai/AIBackend.h"
-#include "../system/Command.h"
+#include "../utils/Logger.h"
 #include "../utils/StringFuzzy.h"
 
-#include <windows.h>
-#include <mmsystem.h>
-
-#include <algorithm>
-#include <cctype>
-#include <cmath>
+#include <chrono>
 #include <regex>
 #include <sstream>
 
 namespace Yuki::Chat {
+
+namespace {
+
+const std::string kCurhatModeInstructions =
+    "MODE CURHAT: dengarkan dulu dan tanggapi dengan empati serta gaya santai. "
+    "Tetap bantu secara konkret bila pengguna meminta solusi.";
+
+class SendMessagePerfLog
+{
+public:
+    SendMessagePerfLog()
+        : m_start(std::chrono::steady_clock::now())
+    {
+    }
+
+    ~SendMessagePerfLog()
+    {
+        const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - m_start).count();
+        Logger::Info("[PERF] ChatController::SendMessage total_duration_us=" +
+                     std::to_string(elapsedUs));
+    }
+
+private:
+    std::chrono::steady_clock::time_point m_start;
+};
+
+} // namespace
 
 ChatController::ChatController(
     std::unique_ptr<Yuki::AI::AIBackend> backend,
@@ -43,59 +66,13 @@ static std::string StripCommandTags(const std::string& response)
 
 std::string ChatController::SendMessage(const std::string& message)
 {
+    const SendMessagePerfLog perfLog;
+
+    if (m_mode != ConversationMode::Curhat)
+        return "Mode Perintah aktif. Gunakan /curhat untuk mengobrol dengan Yuki.";
     if (!m_backend)
         return "Error: AI backend is not initialized.";
 
-    // Handle pending confirmation
-    if (m_pendingCommand.has_value())
-    {
-        std::string lower;
-        lower.reserve(message.size());
-        for (char c : message) lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-
-        static const char* confirmWords[] = {"ya", "iya", "yakin", "lanjutkan", "yes", "y", "oke", "ok", "setuju", "benar", "tentu", "gas"};
-        static const char* rejectWords[] = {"tidak", "nggak", "kaga", "gak", "batalkan", "batal", "jangan", "no", "n", "cancel", "enggak"};
-
-        bool confirmed = false;
-        for (auto* w : confirmWords)
-        {
-            if (lower.find(w) != std::string::npos) { confirmed = true; break; }
-        }
-
-        if (confirmed)
-        {
-            Yuki::System::Command cmd = *m_pendingCommand;
-            cmd.requiresConfirmation = false;
-            m_pendingCommand.reset();
-            Yuki::System::CommandResult result = m_windowsController.Execute(cmd);
-            return result.message;
-        }
-
-        bool rejected = false;
-        for (auto* w : rejectWords)
-        {
-            if (lower.find(w) != std::string::npos) { rejected = true; break; }
-        }
-
-        if (rejected)
-        {
-            m_pendingCommand.reset();
-            return "Oke sayang, dibatalin.";
-        }
-
-        // Not confirm or reject — clear pending, proceed as normal
-        m_pendingCommand.reset();
-    }
-
-    // Step 1: Detect desktop command via rule-based IntentDetector
-    Yuki::System::Command command = m_intentDetector.Detect(message);
-
-    if (command.type != Yuki::System::CommandType::Unknown)
-    {
-        return HandleDesktopCommand(command);
-    }
-
-    // Step 2: Send to AI — Gemma bisa ngeinterpretasi teks yang kacau
     m_conversation.AddUserMessage(message);
 
     if (m_memoryRules.ShouldRemember(message))
@@ -106,31 +83,30 @@ std::string ChatController::SendMessage(const std::string& message)
     }
 
     std::string prompt;
-    if (m_mode == ConversationMode::Curhat && m_config)
-    {
-        prompt = m_promptBuilder.BuildPrompt(
-            m_conversation, m_memoryManager, &m_config->persona_prompt);
-    }
-    else
-    {
-        prompt = m_promptBuilder.BuildPrompt(m_conversation, m_memoryManager);
-    }
-    std::string reply = m_backend->Generate(prompt);
+    const auto promptBuildStart = std::chrono::steady_clock::now();
+    const std::string* personaPrompt = m_config ? &m_config->persona_prompt : nullptr;
+    const std::size_t maxHistoryTurns =
+        m_config ? m_config->conversation.max_history_turns : 6;
+    prompt = m_promptBuilder.BuildPrompt(
+        m_conversation, m_memoryManager, personaPrompt,
+        maxHistoryTurns, &kCurhatModeInstructions);
+    const auto promptBuildUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - promptBuildStart).count();
+    Logger::Info("[PERF] prompt_build_duration_us=" +
+                 std::to_string(promptBuildUs) +
+                 " prompt_size_bytes=" + std::to_string(prompt.size()));
 
+    std::string reply = m_backend->Generate(prompt);
     if (reply.empty())
     {
-        // AI skip (noise/gak jelas) — gak usah ditambah ke conversation
         m_conversation.RemoveLastUserMessage();
         return {};
     }
 
-    // Step 3: AI murni ngobrol — respons tidak pernah dieksekusi jadi perintah.
     std::string cleanReply = StripCommandTags(reply);
-
     m_conversation.AddAssistantMessage(cleanReply);
     return cleanReply;
 }
-
 void ChatController::ClearConversation()
 {
     m_conversation.Clear();
@@ -139,100 +115,6 @@ void ChatController::ClearConversation()
 const Conversation& ChatController::GetConversation() const noexcept
 {
     return m_conversation;
-}
-
-std::string ChatController::HandleDesktopCommand(const Yuki::System::Command& command)
-{
-    if (command.type == Yuki::System::CommandType::Brightness)
-    {
-        return HandleBrightnessCommand(command.parameter);
-    }
-
-    if (command.type == Yuki::System::CommandType::Volume)
-    {
-        return HandleVolumeCommand(command.parameter);
-    }
-
-    Yuki::System::CommandResult result = m_windowsController.Execute(command);
-
-    if (result.confirmationRequired)
-    {
-        m_pendingCommand = command;
-        return result.message;
-    }
-
-    if (!result.success)
-    {
-        return result.message;
-    }
-
-    return result.message;
-}
-
-std::string ChatController::HandleBrightnessCommand(int parameter)
-{
-    // Negative parameters mean relative adjustment
-    if (parameter == -1)
-    {
-        return "Apakah maksudmu 100%?";
-    }
-
-    if (parameter == -2)
-    {
-        Yuki::System::Command cmd;
-        cmd.type = Yuki::System::CommandType::Brightness;
-        cmd.parameter = 15;
-        auto result = m_windowsController.Execute(cmd);
-        return result.message;
-    }
-
-    if (parameter == -3)
-    {
-        Yuki::System::Command cmd;
-        cmd.type = Yuki::System::CommandType::Brightness;
-        cmd.parameter = 15;
-        auto result = m_windowsController.Execute(cmd);
-        return result.message;
-    }
-
-    Yuki::System::Command cmd;
-    cmd.type = Yuki::System::CommandType::Brightness;
-    cmd.parameter = parameter;
-    auto result = m_windowsController.Execute(cmd);
-    return result.message;
-}
-
-std::string ChatController::HandleVolumeCommand(int parameter)
-{
-    if (parameter == -1)
-    {
-        int currentPercent = m_windowsController.GetCurrentVolumePercent();
-        if (currentPercent < 0) currentPercent = 50;
-        int newVol = std::min(100, currentPercent + 10);
-        Yuki::System::Command cmd;
-        cmd.type = Yuki::System::CommandType::Volume;
-        cmd.parameter = newVol;
-        auto result = m_windowsController.Execute(cmd);
-        return result.message;
-    }
-
-    if (parameter == -2)
-    {
-        int currentPercent = m_windowsController.GetCurrentVolumePercent();
-        if (currentPercent < 0) currentPercent = 50;
-        int newVol = std::max(0, currentPercent - 10);
-        Yuki::System::Command cmd;
-        cmd.type = Yuki::System::CommandType::Volume;
-        cmd.parameter = newVol;
-        auto result = m_windowsController.Execute(cmd);
-        return result.message;
-    }
-
-    Yuki::System::Command cmd;
-    cmd.type = Yuki::System::CommandType::Volume;
-    cmd.parameter = parameter;
-    auto result = m_windowsController.Execute(cmd);
-    return result.message;
 }
 
 void ChatController::SetMode(ConversationMode mode) noexcept

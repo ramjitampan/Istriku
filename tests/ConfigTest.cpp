@@ -39,6 +39,8 @@ int main()
         Test("default voice model", cfg.voice.model == "third_party/whisper.cpp/models/ggml-tiny.bin");
         Test("default ollama host", cfg.ollama.host == "http://127.0.0.1:11434");
         Test("default tts volume", cfg.tts.volume == 80);
+        Test("default history turns", cfg.conversation.max_history_turns == 6);
+        Test("default Yukihana persona", cfg.persona_prompt.find("Kamu Yukihana") != std::string::npos);
     }
 
     // Test 2: parse berhasil
@@ -52,6 +54,7 @@ int main()
             "ollama": { "host": "http://10.0.0.1:11434", "model": "llama2" },
             "huggingface": { "model": "ramzy/Yukihana", "endpoint": "https://hf.test/v1/chat/completions", "token_env": "TEST_HF_TOKEN", "max_tokens": 512 },
             "memory": { "database": "test.db" },
+            "conversation": { "max_history_turns": 8 },
             "system": { "confirm_shutdown": false, "confirm_restart": false, "confirm_sleep": true }
         })";
         f.close();
@@ -76,6 +79,7 @@ int main()
         Test("Hugging Face token env", cfg.huggingface.token_env == "TEST_HF_TOKEN");
         Test("Hugging Face max tokens", cfg.huggingface.max_tokens == 512);
         Test("memory database", cfg.memory.database == "test.db");
+        Test("custom history turns", cfg.conversation.max_history_turns == 8);
         Test("confirm_shutdown false", !cfg.system.confirm_shutdown);
         Test("confirm_restart false", !cfg.system.confirm_restart);
         Test("confirm_sleep true", cfg.system.confirm_sleep);

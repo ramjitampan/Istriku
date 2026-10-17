@@ -3,15 +3,13 @@
 #include "../memory/MemoryExtractor.h"
 #include "../memory/MemoryManager.h"
 #include "../memory/MemoryRules.h"
-#include "../system/IntentDetector.h"
-#include "../system/WindowsController.h"
 
 #include "Conversation.h"
 #include "PromptBuilder.h"
 
 #include <memory>
-#include <optional>
 #include <string>
+#include <vector>
 
 namespace Yuki::AI
 {
@@ -66,12 +64,6 @@ public:
         const std::vector<std::string>& exitPhrases) noexcept;
 
 private:
-    std::string HandleDesktopCommand(
-        const Yuki::System::Command& command);
-
-    std::string HandleBrightnessCommand(int parameter);
-    std::string HandleVolumeCommand(int parameter);
-
     std::unique_ptr<Yuki::AI::AIBackend> m_backend;
 
     Yuki::Memory::MemoryManager& m_memoryManager;
@@ -81,11 +73,6 @@ private:
 
     Yuki::Memory::MemoryExtractor m_memoryExtractor;
     Yuki::Memory::MemoryRules m_memoryRules;
-
-    Yuki::System::IntentDetector m_intentDetector;
-    Yuki::System::WindowsController m_windowsController;
-
-    std::optional<Yuki::System::Command> m_pendingCommand;
 
     const Yuki::Config::Config* m_config = nullptr;
 

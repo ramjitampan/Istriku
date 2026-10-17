@@ -24,6 +24,8 @@ private:
     static int ParseIndonesianNumber(const std::string& message);
 
     Command DetectSystem(const std::string& msg);
+    Command DetectSystemInfo(const std::string& msg);
+    Command DetectWeather(const std::string& msg);
     Command DetectApplications(const std::string& msg);
     Command DetectWeb(const std::string& msg);
     Command DetectScreenshot(const std::string& msg);

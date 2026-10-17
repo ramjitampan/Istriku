@@ -36,6 +36,7 @@ public:
 
     CommandResult Execute(const Command& command);
     int GetCurrentVolumePercent();
+    int GetCurrentBrightnessPercent();
 
     void SetYoutubeApiKey(const std::string& apiKey) { m_youtubeApiKey = apiKey; }
 
@@ -48,6 +49,9 @@ private:
     CommandResult ExecuteVolume(const Command& command);
     CommandResult ExecuteBrightness(const Command& command);
     CommandResult ExecuteWifi(const Command& command);
+    CommandResult ExecuteSystemInfo() const;
+    CommandResult ExecuteDateTime() const;
+    CommandResult ExecuteWeather(const Command& command) const;
 
     CommandResult SystemShutdown();
     CommandResult SystemRestart();
@@ -56,10 +60,17 @@ private:
     CommandResult SystemLogOut();
 
     CommandResult OpenVSCodeApp();
+    CommandResult OpenPowerShellApp();
+    CommandResult OpenCommandPromptApp();
+    CommandResult OpenWhatsAppApp();
+    CommandResult OpenWordApp();
+    CommandResult OpenChromeHome();
     CommandResult OpenSteamApp();
     CommandResult OpenExplorerApp();
 
     CommandResult OpenUrlAction(const std::string& url, const std::string& successMessage);
+    CommandResult OpenChromeUrl(const std::string& url, const std::string& successMessage,
+                               CommandType commandType);
 
     static bool SaveBitmapToFile(HBITMAP hBitmap, const std::string& filePath);
     static void FillGammaRamp(int percent, WORD ramp[256*3]);

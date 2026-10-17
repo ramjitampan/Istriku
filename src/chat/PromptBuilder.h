@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <cstddef>
 
 namespace Yuki::Chat
 {
@@ -26,19 +27,28 @@ public:
     std::string BuildPrompt(
         const Conversation& conversation,
         Yuki::Memory::MemoryManager& memoryManager,
-        const std::string* personaPrompt = nullptr) const;
+        const std::string* personaPrompt = nullptr,
+        std::size_t maxHistoryTurns = 6,
+        const std::string* modeInstructions = nullptr) const;
 
 private:
-    std::string BuildHeader() const;
+    std::string BuildTechnicalInstructions() const;
 
     void AppendMemories(
         std::string& prompt,
         Yuki::Memory::MemoryManager& memoryManager,
-        const std::string& lastQuery) const;
+        const std::string& lastQuery,
+        const std::vector<Message>& messages,
+        std::size_t historyStart) const;
 
     void AppendConversation(
         std::string& prompt,
-        const Conversation& conversation) const;
+        const std::vector<Message>& messages,
+        std::size_t historyStart) const;
+
+    static std::size_t GetHistoryStart(
+        const std::vector<Message>& messages,
+        std::size_t maxHistoryTurns);
 
     static std::string FormatKey(
         const std::string& key);

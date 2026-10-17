@@ -15,8 +15,6 @@
 
 #include "ui/TrayWindow.h"
 
-#include "voice/TextToSpeech.h"
-
 #include "utils/HttpClient.h"
 #include "utils/Logger.h"
 
@@ -109,61 +107,36 @@ int main(int argc, char* argv[])
 
     windowsController.SetYoutubeApiKey(cfg.youtube_api_key);
 
+    Chat::CommandRouter router(chat, windowsController, intentDetector, cfg);
+
     if (uiMode == "console")
     {
-        Voice::TextToSpeech tts(cfg.tts);
-
         std::cout << "\n===== Yuki AI =====\n";
-        std::cout << "Mode: Konsol (ketik perintah)\n";
-        std::cout << "Ketik 'exit' atau 'keluar' untuk berhenti.\n\n";
+        std::cout << "Mode aktif: Perintah\n";
+        std::cout << "Gunakan /curhat dan /perintah untuk berpindah mode; /mode untuk melihat mode.\n";
+        std::cout << "Ketik exit atau keluar untuk berhenti.\n\n";
 
         std::string line;
         while (true)
         {
             std::cout << "> " << std::flush;
-            if (!std::getline(std::cin, line))
-                break;
+            if (!std::getline(std::cin, line)) break;
 
             std::string text = Trim(line);
-            if (text.empty())
-                continue;
+            if (text.empty()) continue;
+            if (text == "exit" || text == "keluar" || text == "quit") break;
 
-            if (text == "exit" || text == "keluar" || text == "quit")
-                break;
-
-            System::Command command = intentDetector.Detect(text);
-
-            std::string reply;
-            if (command.type != System::CommandType::Unknown)
+            const auto previousMode = router.GetMode();
+            const std::string reply = router.HandleText(text);
+            std::cout << "[Yuki] " << reply << "\n";
+            if (router.GetMode() != previousMode)
             {
-                Logger::Info("[Console] Intent: " +
-                             std::string(System::CommandTypeToString(command.type)));
-
-                System::CommandResult result =
-                    windowsController.Execute(command);
-
-                if (result.confirmationRequired)
-                {
-                    reply = chat.SendMessage(text);
-                }
-                else
-                {
-                    if (!result.success)
-                    {
-                        Logger::Error("[Console] Desktop command failed: " +
-                                      result.message);
-                    }
-                    reply = result.message;
-                }
+                std::cout << "[Mode aktif: "
+                          << (router.GetMode() == Chat::ConversationMode::Curhat
+                                  ? "Curhat" : "Perintah")
+                          << "]\n";
             }
-            else
-            {
-                Logger::Info("[Console] Intent: None — sending to AI");
-                reply = chat.SendMessage(text);
-            }
-
-            std::cout << "[Yuki] " << reply << "\n\n";
-            tts.Speak(reply);
+            std::cout << "\n";
         }
 
         std::cout << "Yuki berhenti.\n";
@@ -171,7 +144,6 @@ int main(int argc, char* argv[])
     }
 
     // Tray mode
-    Chat::CommandRouter router(chat, windowsController, intentDetector, cfg);
     TrayWindow trayWindow(cfg, router);
 
     if (!trayWindow.Create())

@@ -74,8 +74,6 @@ set(SOURCES
 
     src/remote/RemoteServer.cpp
 
-    src/voice/TextToSpeech.cpp
-
     third_party/sqlite/sqlite3.c
 )
 
@@ -122,7 +120,7 @@ add_executable(MemoryRulesTest
 add_executable(SystemTest
     tests/SystemTest.cpp
     src/system/WindowsController.cpp src/system/IntentDetector.cpp
-    src/utils/Logger.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp
 )
 
 add_executable(RemoteServerTest
@@ -165,7 +163,13 @@ target_include_directories(ExtractorTest PRIVATE src)
 target_include_directories(RetrieverTest PRIVATE src third_party third_party/sqlite)
 target_include_directories(PromptBuilderTest PRIVATE src third_party third_party/sqlite)
 target_include_directories(MemoryRulesTest PRIVATE src)
-target_include_directories(SystemTest PRIVATE src)
+target_include_directories(SystemTest PRIVATE src third_party)
+
+add_executable(CommandIntentTest
+    tests/CommandIntentTest.cpp
+    src/system/IntentDetector.cpp
+)
+target_include_directories(CommandIntentTest PRIVATE src)
 target_include_directories(WakeWordTest PRIVATE src)
 target_include_directories(TextToSpeechTest PRIVATE src)
 
@@ -184,13 +188,43 @@ target_include_directories(ConfigTest PRIVATE
 # Link Libraries
 # =====================================================
 target_link_libraries(Yuki PRIVATE
-    user32 gdi32 winhttp gdiplus ole32 oleaut32 uuid powrprof winmm sapi advapi32 shell32 ws2_32
+    user32 gdi32 winhttp gdiplus ole32 oleaut32 uuid powrprof winmm advapi32 shell32 ws2_32
 )
 target_link_libraries(OllamaTest PRIVATE user32 gdi32 winhttp)
 target_link_libraries(HuggingFaceBackendTest PRIVATE user32 gdi32 winhttp)
 target_link_libraries(MemoryTest PRIVATE user32 gdi32)
 target_link_libraries(RetrieverTest PRIVATE user32 gdi32)
 target_link_libraries(PromptBuilderTest PRIVATE user32 gdi32)
+
+add_executable(PromptHistoryTest
+    tests/PromptHistoryTest.cpp
+    src/chat/PromptBuilder.cpp src/chat/Conversation.cpp
+    src/memory/MemoryManager.cpp src/memory/SQLiteMemoryStorage.cpp
+    src/utils/Logger.cpp third_party/sqlite/sqlite3.c
+)
+target_include_directories(PromptHistoryTest PRIVATE src third_party third_party/sqlite)
+target_link_libraries(PromptHistoryTest PRIVATE user32 gdi32)
+
+add_executable(PersonaConsistencyTest
+    tests/PersonaConsistencyTest.cpp
+    src/chat/ChatController.cpp src/chat/Conversation.cpp
+    src/chat/PromptBuilder.cpp
+    src/config/Config.cpp src/config/ConfigManager.cpp
+    src/system/IntentDetector.cpp src/system/WindowsController.cpp
+    src/memory/MemoryManager.cpp src/memory/MemoryRules.cpp
+    src/memory/MemoryExtractor.cpp src/memory/SQLiteMemoryStorage.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp src/utils/StringFuzzy.cpp
+    third_party/sqlite/sqlite3.c
+)
+target_include_directories(PersonaConsistencyTest PRIVATE
+    src
+    third_party
+    third_party/nlohmann
+    third_party/sqlite
+)
+target_link_libraries(PersonaConsistencyTest PRIVATE
+    user32 gdi32 gdiplus ole32 oleaut32 uuid powrprof winmm advapi32 winhttp
+)
 target_link_libraries(SystemTest PRIVATE user32 gdi32 gdiplus ole32 oleaut32 uuid powrprof winmm advapi32 winhttp)
 target_link_libraries(WakeWordTest PRIVATE user32 gdi32)
 target_link_libraries(TextToSpeechTest PRIVATE user32 gdi32 ole32 sapi)
@@ -198,7 +232,7 @@ target_link_libraries(TextToSpeechTest PRIVATE user32 gdi32 ole32 sapi)
 add_executable(BrightnessIntentTest
     tests/BrightnessIntentTest.cpp
     src/system/IntentDetector.cpp src/system/WindowsController.cpp
-    src/utils/Logger.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp
 )
 target_include_directories(BrightnessIntentTest PRIVATE
     src
@@ -285,7 +319,7 @@ add_executable(NoAICmdExecutionTest
     src/system/IntentDetector.cpp src/system/WindowsController.cpp
     src/memory/MemoryManager.cpp src/memory/MemoryRules.cpp
     src/memory/MemoryExtractor.cpp src/memory/SQLiteMemoryStorage.cpp
-    src/utils/Logger.cpp src/utils/StringFuzzy.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp src/utils/StringFuzzy.cpp
     third_party/sqlite/sqlite3.c
 )
 target_include_directories(NoAICmdExecutionTest PRIVATE
@@ -306,7 +340,7 @@ add_executable(ModeTransitionTest
     src/system/IntentDetector.cpp src/system/WindowsController.cpp
     src/memory/MemoryManager.cpp src/memory/MemoryRules.cpp
     src/memory/MemoryExtractor.cpp src/memory/SQLiteMemoryStorage.cpp
-    src/utils/Logger.cpp src/utils/StringFuzzy.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp src/utils/StringFuzzy.cpp
     third_party/sqlite/sqlite3.c
 )
 target_include_directories(ModeTransitionTest PRIVATE
@@ -316,6 +350,27 @@ target_include_directories(ModeTransitionTest PRIVATE
     third_party/sqlite
 )
 target_link_libraries(ModeTransitionTest PRIVATE
+    user32 gdi32 gdiplus ole32 oleaut32 uuid powrprof winmm advapi32 winhttp
+)
+
+add_executable(ModeRoutingTest
+    tests/ModeRoutingTest.cpp
+    src/chat/ChatController.cpp src/chat/CommandRouter.cpp
+    src/chat/Conversation.cpp src/chat/PromptBuilder.cpp
+    src/config/Config.cpp src/config/ConfigManager.cpp
+    src/system/IntentDetector.cpp src/system/WindowsController.cpp
+    src/memory/MemoryManager.cpp src/memory/MemoryRules.cpp
+    src/memory/MemoryExtractor.cpp src/memory/SQLiteMemoryStorage.cpp
+    src/utils/Json.cpp src/utils/Logger.cpp src/utils/StringFuzzy.cpp
+    third_party/sqlite/sqlite3.c
+)
+target_include_directories(ModeRoutingTest PRIVATE
+    src
+    third_party
+    third_party/nlohmann
+    third_party/sqlite
+)
+target_link_libraries(ModeRoutingTest PRIVATE
     user32 gdi32 gdiplus ole32 oleaut32 uuid powrprof winmm advapi32 winhttp
 )
 

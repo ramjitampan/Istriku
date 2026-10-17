@@ -1,5 +1,6 @@
 #include "WindowsController.h"
 #include "../utils/Logger.h"
+#include "../utils/Json.h"
 
 #include <shellapi.h>
 #include <powrprof.h>
@@ -13,6 +14,7 @@
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -37,10 +39,13 @@ std::string HttpGet(const std::string& url, long timeoutMs = 15000)
     urlComp.dwStructSize = sizeof(urlComp);
     wchar_t host[256] = {};
     wchar_t path[2048] = {};
+    wchar_t extraInfo[4096] = {};
     urlComp.lpszHostName = host;
     urlComp.dwHostNameLength = 256;
     urlComp.lpszUrlPath = path;
     urlComp.dwUrlPathLength = 2048;
+    urlComp.lpszExtraInfo = extraInfo;
+    urlComp.dwExtraInfoLength = 4096;
 
     std::wstring wurl(url.begin(), url.end());
     if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &urlComp))
@@ -58,7 +63,11 @@ std::string HttpGet(const std::string& url, long timeoutMs = 15000)
         return result;
     }
 
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path,
+    std::wstring requestPath(path);
+    if (urlComp.dwExtraInfoLength > 0)
+        requestPath.append(extraInfo, urlComp.dwExtraInfoLength);
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", requestPath.c_str(),
         nullptr, nullptr, nullptr, isHttps ? WINHTTP_FLAG_SECURE : 0);
     if (!hRequest)
     {
@@ -138,13 +147,34 @@ CommandResult WindowsController::Execute(const Command& command)
             return ExecuteSystemCommand(command);
 
         case CommandType::OpenVSCode:
+        case CommandType::OpenNotepad:
+        case CommandType::OpenPowerShell:
+        case CommandType::OpenCommandPrompt:
+        case CommandType::OpenWhatsApp:
+        case CommandType::OpenWord:
+        case CommandType::OpenChrome:
         case CommandType::OpenSteam:
         case CommandType::OpenExplorer:
             return ExecuteOpenApplication(command);
 
         case CommandType::OpenYoutubeMusic:
         case CommandType::OpenGithub:
+        case CommandType::OpenChromeSite:
             return ExecuteOpenWeb(command);
+
+        case CommandType::SystemInfo:
+            return ExecuteSystemInfo();
+
+        case CommandType::DateTime:
+            return ExecuteDateTime();
+
+        case CommandType::WeatherHome:
+        case CommandType::WeatherCampus:
+            return ExecuteWeather(command);
+
+        case CommandType::WeatherHelp:
+            return {true, "Pilih lokasi: ucapkan 'cuaca rumah' atau 'cuaca kampus'.",
+                    false, CommandType::WeatherHelp};
 
         case CommandType::Screenshot:
             return ExecuteScreenshot();
@@ -335,6 +365,19 @@ CommandResult WindowsController::ExecuteOpenApplication(const Command& command)
     switch (command.type)
     {
         case CommandType::OpenVSCode:        return OpenVSCodeApp();
+        case CommandType::OpenNotepad:
+        {
+            HINSTANCE hResult = ShellExecuteA(nullptr, "open", "notepad.exe",
+                nullptr, nullptr, SW_SHOWNORMAL);
+            if (reinterpret_cast<INT_PTR>(hResult) <= 32)
+                return {false, "Gagal membuka Notepad.", false, CommandType::OpenNotepad};
+            return {true, "Membuka Notepad.", false, CommandType::OpenNotepad};
+        }
+        case CommandType::OpenPowerShell: return OpenPowerShellApp();
+        case CommandType::OpenCommandPrompt: return OpenCommandPromptApp();
+        case CommandType::OpenWhatsApp:  return OpenWhatsAppApp();
+        case CommandType::OpenWord:      return OpenWordApp();
+        case CommandType::OpenChrome:    return OpenChromeHome();
         case CommandType::OpenSteam:         return OpenSteamApp();
         case CommandType::OpenExplorer:      return OpenExplorerApp();
         default:
@@ -413,17 +456,291 @@ CommandResult WindowsController::OpenExplorerApp()
     return {true, "Membuka File Explorer.", false, CommandType::OpenExplorer};
 }
 
+CommandResult WindowsController::OpenPowerShellApp()
+{
+    HINSTANCE result = ShellExecuteA(nullptr, "open", "powershell.exe",
+        nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32)
+        return {false, "Gagal membuka PowerShell.", false, CommandType::OpenPowerShell};
+    return {true, "Membuka PowerShell.", false, CommandType::OpenPowerShell};
+}
+
+CommandResult WindowsController::OpenCommandPromptApp()
+{
+    HINSTANCE result = ShellExecuteA(nullptr, "open", "cmd.exe",
+        nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32)
+        return {false, "Gagal membuka Command Prompt.", false, CommandType::OpenCommandPrompt};
+    return {true, "Membuka Command Prompt.", false, CommandType::OpenCommandPrompt};
+}
+
+CommandResult WindowsController::OpenWhatsAppApp()
+{
+    HINSTANCE result = ShellExecuteA(nullptr, "open", "whatsapp:",
+        nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32)
+    {
+        const std::string appPath = GetLocalAppDataPath() + "\\WhatsApp\\WhatsApp.exe";
+        if (!fs::exists(appPath))
+            return {false, "WhatsApp tidak ditemukan atau protokol aplikasinya belum terdaftar.",
+                    false, CommandType::OpenWhatsApp};
+        result = ShellExecuteA(nullptr, "open", appPath.c_str(),
+            nullptr, nullptr, SW_SHOWNORMAL);
+    }
+
+    if (reinterpret_cast<INT_PTR>(result) <= 32)
+        return {false, "Gagal membuka WhatsApp.", false, CommandType::OpenWhatsApp};
+    return {true, "Membuka WhatsApp.", false, CommandType::OpenWhatsApp};
+}
+
+CommandResult WindowsController::OpenWordApp()
+{
+    HINSTANCE result = ShellExecuteA(nullptr, "open", "winword.exe",
+        nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) > 32)
+        return {true, "Membuka Microsoft Word.", false, CommandType::OpenWord};
+
+    const std::string pf = GetProgramFilesPath();
+    char x86Buffer[MAX_PATH] = {};
+    size_t x86Size = 0;
+    getenv_s(&x86Size, x86Buffer, MAX_PATH, "ProgramFiles(x86)");
+    const std::string pf86 = x86Size > 1 ? std::string(x86Buffer) : pf;
+    const std::vector<std::string> paths = {
+        pf + "\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+        pf86 + "\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+        pf + "\\Microsoft Office\\Office16\\WINWORD.EXE",
+        pf86 + "\\Microsoft Office\\Office16\\WINWORD.EXE"
+    };
+    for (const auto& path : paths)
+    {
+        if (fs::exists(path))
+        {
+            result = ShellExecuteA(nullptr, "open", path.c_str(),
+                nullptr, nullptr, SW_SHOWNORMAL);
+            if (reinterpret_cast<INT_PTR>(result) > 32)
+                return {true, "Membuka Microsoft Word.", false, CommandType::OpenWord};
+        }
+    }
+    return {false, "Microsoft Word tidak ditemukan.", false, CommandType::OpenWord};
+}
+
+CommandResult WindowsController::OpenChromeHome()
+{
+    return OpenChromeUrl("chrome://newtab/", "Membuka halaman utama Chrome.",
+                         CommandType::OpenChrome);
+}
+
 // ===================== WEB COMMANDS =====================
 
 CommandResult WindowsController::ExecuteOpenWeb(const Command& command)
 {
     switch (command.type)
     {
-        case CommandType::OpenYoutubeMusic: return OpenUrlAction("https://music.youtube.com", "Membuka YouTube Music.");
-        case CommandType::OpenGithub:       return OpenUrlAction("https://github.com", "Membuka GitHub.");
+        case CommandType::OpenYoutubeMusic:
+            return OpenChromeUrl("https://music.youtube.com", "Membuka YouTube Music.", command.type);
+        case CommandType::OpenGithub:
+            return OpenChromeUrl("https://github.com", "Membuka GitHub.", command.type);
+        case CommandType::OpenChromeSite:
+        {
+            if (command.query == "smile_unp")
+                return OpenChromeUrl("https://smile.unp.ac.id/elearning/login/index.php",
+                    "Membuka e-learning SMILE UNP di Chrome.", command.type);
+            if (command.query == "chatgpt")
+                return OpenChromeUrl("https://chatgpt.com", "Membuka ChatGPT di Chrome.", command.type);
+            if (command.query == "facebook")
+                return OpenChromeUrl("https://www.facebook.com", "Membuka Facebook di Chrome.", command.type);
+            if (command.query == "tiktok")
+                return OpenChromeUrl("https://www.tiktok.com", "Membuka TikTok di Chrome.", command.type);
+            if (command.query == "instagram")
+                return OpenChromeUrl("https://www.instagram.com", "Membuka Instagram di Chrome.", command.type);
+            if (command.query == "youtube")
+                return OpenChromeUrl("https://www.youtube.com", "Membuka YouTube di Chrome.", command.type);
+            if (command.query == "claude")
+                return OpenChromeUrl("https://claude.ai", "Membuka Claude di Chrome.", command.type);
+            return {false, "Situs Chrome tidak dikenal.", false, CommandType::OpenChromeSite};
+        }
         default:
             return {false, "Website tidak dikenal.", false, CommandType::Unknown};
     }
+}
+
+CommandResult WindowsController::OpenChromeUrl(const std::string& url,
+    const std::string& successMessage, CommandType commandType)
+{
+    HINSTANCE result = ShellExecuteA(nullptr, "open", "chrome.exe",
+        url.c_str(), nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) > 32)
+        return {true, successMessage, false, commandType};
+
+    char x86Buffer[MAX_PATH] = {};
+    size_t x86Size = 0;
+    getenv_s(&x86Size, x86Buffer, MAX_PATH, "ProgramFiles(x86)");
+    const std::string pf86 = x86Size > 1 ? std::string(x86Buffer) : "C:\\Program Files (x86)";
+    const std::vector<std::string> paths = {
+        GetProgramFilesPath() + "\\Google\\Chrome\\Application\\chrome.exe",
+        pf86 + "\\Google\\Chrome\\Application\\chrome.exe",
+        GetLocalAppDataPath() + "\\Google\\Chrome\\Application\\chrome.exe"
+    };
+    for (const auto& path : paths)
+    {
+        if (fs::exists(path))
+        {
+            result = ShellExecuteA(nullptr, "open", path.c_str(),
+                url.c_str(), nullptr, SW_SHOWNORMAL);
+            if (reinterpret_cast<INT_PTR>(result) > 32)
+                return {true, successMessage, false, commandType};
+        }
+    }
+    return {false, "Google Chrome tidak ditemukan.", false, commandType};
+}
+
+CommandResult WindowsController::ExecuteSystemInfo() const
+{
+    SYSTEM_INFO systemInfo{};
+    GetNativeSystemInfo(&systemInfo);
+
+    MEMORYSTATUSEX memoryStatus{};
+    memoryStatus.dwLength = sizeof(memoryStatus);
+    const bool hasMemory = GlobalMemoryStatusEx(&memoryStatus) != FALSE;
+
+    char computerName[MAX_COMPUTERNAME_LENGTH + 1] = {};
+    DWORD computerNameSize = sizeof(computerName);
+    GetComputerNameA(computerName, &computerNameSize);
+
+    OSVERSIONINFOW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    using RtlGetVersionFn = LONG (WINAPI*)(OSVERSIONINFOW*);
+    RtlGetVersionFn getVersion = nullptr;
+    const FARPROC versionProcedure = ntdll ? GetProcAddress(ntdll, "RtlGetVersion") : nullptr;
+    static_assert(sizeof(getVersion) == sizeof(versionProcedure),
+                  "Windows function pointer representations must match");
+    std::memcpy(&getVersion, &versionProcedure, sizeof(getVersion));
+    const bool hasVersion = getVersion && getVersion(&version) >= 0;
+
+    std::string osName = "Windows";
+    if (hasVersion && version.dwMajorVersion == 10)
+        osName = version.dwBuildNumber >= 22000 ? "Windows 11" : "Windows 10";
+    else if (hasVersion)
+        osName += " NT " + std::to_string(version.dwMajorVersion) + "." +
+                  std::to_string(version.dwMinorVersion);
+
+    const char* architecture = "tidak diketahui";
+    switch (systemInfo.wProcessorArchitecture)
+    {
+        case PROCESSOR_ARCHITECTURE_AMD64: architecture = "x64"; break;
+        case PROCESSOR_ARCHITECTURE_ARM64: architecture = "ARM64"; break;
+        case PROCESSOR_ARCHITECTURE_INTEL: architecture = "x86"; break;
+    }
+
+    std::ostringstream report;
+    report << "Nama perangkat: " << (computerName[0] ? computerName : "tidak tersedia")
+           << "\nSistem operasi: " << osName;
+    if (hasVersion)
+        report << " (build " << version.dwBuildNumber << ")";
+    report << "\nArsitektur: " << architecture
+           << "\nProsesor logis: " << systemInfo.dwNumberOfProcessors;
+    if (hasMemory)
+        report << "\nRAM total: " << (memoryStatus.ullTotalPhys / (1024ULL * 1024ULL))
+               << " MB\nRAM tersedia: "
+               << (memoryStatus.ullAvailPhys / (1024ULL * 1024ULL)) << " MB";
+    return {true, report.str(), false, CommandType::SystemInfo};
+}
+
+CommandResult WindowsController::ExecuteDateTime() const
+{
+    SYSTEMTIME localTime{};
+    GetLocalTime(&localTime);
+    std::ostringstream report;
+    report << "Tanggal dan waktu lokal: " << std::setfill('0')
+           << std::setw(2) << localTime.wDay << '/'
+           << std::setw(2) << localTime.wMonth << '/'
+           << localTime.wYear << ' ' << std::setw(2) << localTime.wHour << ':'
+           << std::setw(2) << localTime.wMinute << ':'
+           << std::setw(2) << localTime.wSecond;
+    return {true, report.str(), false, CommandType::DateTime};
+}
+
+CommandResult WindowsController::ExecuteWeather(const Command& command) const
+{
+    const bool home = command.type == CommandType::WeatherHome;
+    const char* location = home
+        ? "Rumah (Kelurahan Nangka, Binjai Utara)"
+        : "Kampus Universitas Negeri Padang, Padang";
+    // Approximate coordinates: Nangka locality center and UNP main campus.
+    const char* latitude = home ? "3.6192" : "-0.897455";
+    const char* longitude = home ? "98.5045" : "100.350767";
+
+    const std::string url =
+        std::string("https://api.open-meteo.com/v1/forecast?latitude=") + latitude +
+        "&longitude=" + longitude +
+        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
+        "&timezone=Asia%2FJakarta";
+    const std::string body = HttpGet(url, 10000);
+    const auto json = Yuki::Utils::Json::Parse(body);
+    const auto& root = json.Raw();
+    if (!root.is_object() || !root.contains("current") || !root["current"].is_object())
+    {
+        Logger::Warning("Weather: Open-Meteo did not return current conditions.");
+        return {false, "Data cuaca belum bisa diambil. Periksa koneksi internet lalu coba lagi.",
+                false, command.type};
+    }
+
+    const auto& current = root["current"];
+    auto number = [&](const char* key) -> std::optional<double>
+    {
+        const auto it = current.find(key);
+        if (it == current.end() || !it->is_number())
+            return std::nullopt;
+        return it->get<double>();
+    };
+
+    const auto temperature = number("temperature_2m");
+    const auto humidity = number("relative_humidity_2m");
+    const auto feelsLike = number("apparent_temperature");
+    const auto precipitation = number("precipitation");
+    const auto wind = number("wind_speed_10m");
+    const auto code = number("weather_code");
+    const auto timeIt = current.find("time");
+
+    if (!temperature || !humidity || !code)
+        return {false, "Respons cuaca tidak lengkap. Coba lagi nanti.", false, command.type};
+
+    const int weatherCode = static_cast<int>(*code);
+    const char* condition = "Kondisi tidak diketahui";
+    switch (weatherCode)
+    {
+        case 0: condition = "Cerah"; break;
+        case 1: condition = "Cerah berawan"; break;
+        case 2: condition = "Berawan sebagian"; break;
+        case 3: condition = "Mendung"; break;
+        case 45: case 48: condition = "Berkabut"; break;
+        case 51: case 53: case 55: condition = "Gerimis"; break;
+        case 56: case 57: condition = "Gerimis beku"; break;
+        case 61: case 63: case 65: condition = "Hujan"; break;
+        case 66: case 67: condition = "Hujan beku"; break;
+        case 71: case 73: case 75: case 77: condition = "Salju"; break;
+        case 80: case 81: case 82: condition = "Hujan lokal"; break;
+        case 85: case 86: condition = "Hujan salju"; break;
+        case 95: case 96: case 99: condition = "Badai petir"; break;
+    }
+
+    std::ostringstream report;
+    report << "Cuaca saat ini — " << location;
+    if (timeIt != current.end() && timeIt->is_string())
+        report << " (" << timeIt->get<std::string>() << " WIB)";
+    report << "\nKondisi: " << condition
+           << "\nSuhu: " << std::fixed << std::setprecision(1) << *temperature << " °C"
+           << "\nKelembapan: " << std::setprecision(0) << *humidity << "%";
+    if (feelsLike)
+        report << "\nTerasa seperti: " << std::setprecision(1) << *feelsLike << " °C";
+    if (precipitation)
+        report << "\nCurah hujan 1 jam terakhir: " << std::setprecision(1)
+               << *precipitation << " mm";
+    if (wind)
+        report << "\nKecepatan angin: " << std::setprecision(1) << *wind << " km/jam";
+    report << "\nSumber: Open-Meteo (data model cuaca).";
+    return {true, report.str(), false, command.type};
 }
 
 CommandResult WindowsController::OpenUrlAction(const std::string& url, const std::string& successMessage)
@@ -576,6 +893,77 @@ int WindowsController::GetCurrentVolumePercent()
     if (SUCCEEDED(hr)) CoUninitialize();
 
     return percent;
+}
+
+int WindowsController::GetCurrentBrightnessPercent()
+{
+    SECURITY_ATTRIBUTES securityAttributes{};
+    securityAttributes.nLength = sizeof(securityAttributes);
+    securityAttributes.bInheritHandle = TRUE;
+
+    HANDLE readPipe = nullptr;
+    HANDLE writePipe = nullptr;
+    if (!CreatePipe(&readPipe, &writePipe, &securityAttributes, 0))
+        return -1;
+    SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+    std::string commandLine =
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \""
+        "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness | "
+        "Select-Object -First 1 -ExpandProperty CurrentBrightness)\"";
+
+    STARTUPINFOA startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    startupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    startupInfo.wShowWindow = SW_HIDE;
+    startupInfo.hStdOutput = writePipe;
+    startupInfo.hStdError = writePipe;
+    startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    PROCESS_INFORMATION processInfo{};
+    const BOOL created = CreateProcessA(nullptr, commandLine.data(), nullptr, nullptr,
+        TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo);
+    CloseHandle(writePipe);
+    if (!created)
+    {
+        CloseHandle(readPipe);
+        return -1;
+    }
+
+    const DWORD waitResult = WaitForSingleObject(processInfo.hProcess, 5000);
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        TerminateProcess(processInfo.hProcess, 1);
+        CloseHandle(readPipe);
+        CloseHandle(processInfo.hThread);
+        CloseHandle(processInfo.hProcess);
+        return -1;
+    }
+
+    std::string output;
+    char buffer[128];
+    DWORD bytesRead = 0;
+    while (ReadFile(readPipe, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0)
+    {
+        if (output.size() < 512)
+            output.append(buffer, std::min<std::size_t>(bytesRead, 512 - output.size()));
+    }
+    CloseHandle(readPipe);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+
+    const auto firstDigit = output.find_first_of("0123456789");
+    if (firstDigit == std::string::npos)
+        return -1;
+    try
+    {
+        const int value = std::stoi(output.substr(firstDigit));
+        return value >= 0 && value <= 100 ? value : -1;
+    }
+    catch (const std::exception&)
+    {
+        return -1;
+    }
 }
 
 CommandResult WindowsController::ExecuteVolume(const Command& command)

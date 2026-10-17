@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../config/Config.h"
-#include "../voice/TextToSpeech.h"
 
 #include <Windows.h>
 #include <shellapi.h>
@@ -89,9 +88,6 @@ private:
     // Dependencies
     const Yuki::Config::Config& m_config;
     Yuki::Chat::CommandRouter& m_router;
-
-    // Text-to-speech (voice output only)
-    Yuki::Voice::TextToSpeech m_tts;
 
     // Windows
     HWND m_hwndHidden = nullptr;

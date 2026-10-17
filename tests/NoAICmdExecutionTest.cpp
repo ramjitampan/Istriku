@@ -35,6 +35,7 @@ static void TestAIResponseNeverExecutesCommands()
     auto backend = std::make_unique<MockBackend>();
     backend->reply = "Halo, sayang! Kamu baik-baik saja hari ini? [CMD:Volume 38]";
     ChatController chat(std::move(backend), dummyMemMgr);
+    chat.SetMode(Yuki::Chat::ConversationMode::Curhat);
 
     std::string result = chat.SendMessage("hallo");
 
@@ -54,6 +55,7 @@ static void TestAICommandAtStartIsNotExecuted()
     auto backend = std::make_unique<MockBackend>();
     backend->reply = "[CMD:VolumeUp] Siap sayang, sudah kubuat lebih nyaman.";
     ChatController chat(std::move(backend), dummyMemMgr);
+    chat.SetMode(Yuki::Chat::ConversationMode::Curhat);
 
     std::string result = chat.SendMessage("hallo");
 

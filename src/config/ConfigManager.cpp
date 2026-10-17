@@ -193,6 +193,19 @@ bool ConfigManager::LoadFromFile()
             m_config.remote.token = r["token"].get<std::string>();
     }
 
+    // Conversation context sent to the AI (stored history is never truncated)
+    if (root.contains("conversation") && root["conversation"].is_object())
+    {
+        const auto& c = root["conversation"];
+        if (c.contains("max_history_turns") &&
+            c["max_history_turns"].is_number_integer())
+        {
+            const auto turns = c["max_history_turns"].get<long long>();
+            if (turns >= 1 && turns <= 1000)
+                m_config.conversation.max_history_turns = static_cast<std::size_t>(turns);
+        }
+    }
+
     // YouTube (auto-play lagu)
     if (root.contains("youtube_api_key") && root["youtube_api_key"].is_string())
         m_config.youtube_api_key = root["youtube_api_key"].get<std::string>();

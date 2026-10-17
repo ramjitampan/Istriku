@@ -30,6 +30,14 @@ Command IntentDetector::Detect(const std::string& message)
     if (result.type != CommandType::Unknown)
         return result;
 
+    result = DetectSystemInfo(msg);
+    if (result.type != CommandType::Unknown)
+        return result;
+
+    result = DetectWeather(msg);
+    if (result.type != CommandType::Unknown)
+        return result;
+
     result = DetectApplications(msg);
     if (result.type != CommandType::Unknown)
         return result;
@@ -84,13 +92,6 @@ Command IntentDetector::DetectConfirmation(const std::string& msg)
 
 Command IntentDetector::DetectSystem(const std::string& msg)
 {
-    // "tidur yang nyenyak sayang" → Shutdown (checked before "tidur" → Sleep)
-    if ((Contains(msg, "nyenyak") && Contains(msg, "tidur")) ||
-        (Contains(msg, "tidur") && Contains(msg, "sayang")))
-    {
-        return {CommandType::Shutdown, -1, "", true};
-    }
-
     if (Contains(msg, "matikan laptop") ||
         Contains(msg, "matikan komputer") ||
         Contains(msg, "shutdown") ||
@@ -135,8 +136,66 @@ Command IntentDetector::DetectSystem(const std::string& msg)
     return {CommandType::Unknown, -1, "", false};
 }
 
+Command IntentDetector::DetectSystemInfo(const std::string& msg)
+{
+    if (Contains(msg, "info sistem") || Contains(msg, "informasi sistem") ||
+        Contains(msg, "spesifikasi komputer") || Contains(msg, "spesifikasi laptop") ||
+        Contains(msg, "info komputer") || Contains(msg, "informasi komputer") ||
+        Contains(msg, "system info"))
+    {
+        return {CommandType::SystemInfo, -1, "", false};
+    }
+
+    if (Contains(msg, "tanggal berapa") || Contains(msg, "tanggal sekarang") ||
+        Contains(msg, "hari apa") || Contains(msg, "jam berapa") ||
+        Contains(msg, "waktu sekarang") || msg == "tanggal" || msg == "jam")
+    {
+        return {CommandType::DateTime, -1, "", false};
+    }
+
+    return {CommandType::Unknown, -1, "", false};
+}
+
+Command IntentDetector::DetectWeather(const std::string& msg)
+{
+    if (!Contains(msg, "cuaca") && !Contains(msg, "weather"))
+        return {CommandType::Unknown, -1, "", false};
+
+    if (Contains(msg, "kampus") || Contains(msg, "unp") ||
+        Contains(msg, "padang") || Contains(msg, "kuliah"))
+        return {CommandType::WeatherCampus, -1, "", false};
+
+    if (Contains(msg, "rumah") || Contains(msg, "binjai") || Contains(msg, "nangka"))
+        return {CommandType::WeatherHome, -1, "", false};
+
+    return {CommandType::WeatherHelp, -1, "", false};
+}
+
 Command IntentDetector::DetectApplications(const std::string& msg)
 {
+    if (Contains(msg, "buka powershell") || Contains(msg, "buka power shell") ||
+        Contains(msg, "buka terminal") || Contains(msg, "buka cli"))
+        return {CommandType::OpenPowerShell, -1, "", false};
+
+    if (Contains(msg, "buka command prompt") || Contains(msg, "buka command line") ||
+        Contains(msg, "buka cmd") || msg == "cmd")
+        return {CommandType::OpenCommandPrompt, -1, "", false};
+
+    if (Contains(msg, "buka whatsapp") || Contains(msg, "buka whats app") ||
+        Contains(msg, "buka wa"))
+        return {CommandType::OpenWhatsApp, -1, "", false};
+
+    if (Contains(msg, "buka microsoft word") || Contains(msg, "buka ms word") ||
+        Contains(msg, "buka word"))
+        return {CommandType::OpenWord, -1, "", false};
+
+    if (Contains(msg, "halaman utama chrome") || Contains(msg, "buka halaman utama chrome") ||
+        Contains(msg, "buka chrome") || Contains(msg, "buka google chrome"))
+        return {CommandType::OpenChrome, -1, "", false};
+
+    if (Contains(msg, "buka notepad") || Contains(msg, "open notepad"))
+        return {CommandType::OpenNotepad, -1, "", false};
+
     if (Contains(msg, "buka vscode") ||
         Contains(msg, "buka visual studio code") ||
         Contains(msg, "vscode") ||
@@ -171,14 +230,28 @@ Command IntentDetector::DetectWeb(const std::string& msg)
         return {CommandType::OpenYoutubeMusic, -1, "", false};
     }
 
-    // Looser match: "buka"/"bukakan" + any of youtube/yutub/music/musik
-    // Menangkap varian seperti "buka youtube", "bukakan youtube",
-    // "bukakan untuk music" (whisper misrecognizes "youtube" as "untuk")
+    // Music-only variants are YouTube Music. Plain YouTube is mapped below
+    // to its own website intent.
     if ((Contains(msg, "buka") || Contains(msg, "bukakan")) &&
-        (Contains(msg, "youtube") || Contains(msg, "yutub") ||
-         Contains(msg, "music") || Contains(msg, "musik")))
+        (Contains(msg, "music") || Contains(msg, "musik")))
     {
         return {CommandType::OpenYoutubeMusic, -1, "", false};
+    }
+
+    struct SiteIntent { const char* phrase; const char* site; };
+    static const SiteIntent sites[] = {
+        {"smile unp", "smile_unp"}, {"e-learning", "smile_unp"},
+        {"elearning", "smile_unp"}, {"e learning", "smile_unp"},
+        {"chatgpt", "chatgpt"}, {"facebook", "facebook"},
+        {"tiktok", "tiktok"}, {"tik tok", "tiktok"},
+        {"instagram", "instagram"}, {"youtube", "youtube"},
+        {"yutub", "youtube"},
+        {"claude", "claude"}
+    };
+    for (const auto& site : sites)
+    {
+        if (Contains(msg, site.phrase))
+            return {CommandType::OpenChromeSite, -1, site.site, false};
     }
 
     if (Contains(msg, "buka github") ||

@@ -1,11 +1,11 @@
-# Yuki - Voice-Based AI Personal Assistant (My istri) belum siap njir
+# Yuki - Text-Based AI Personal Assistant (My istri) belum siap njir
 *Project iseng project mandiri*
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ramjitampan/RemouteIstriku_Yukihana/main/assets/yukihana.gif" width="900">
 </p>
 
-Yuki adalah asisten AI personal berbahasa Indonesia yang berjalan sebagai **system tray app** di Windows. Sekarang interaksi utamanya lewat **jendela chat (ketik teks)** dengan **suara keluar (TTS)**, ditambah **mode curhat** dengan AI lokal (Ollama) yang punya persona, sistem memori jangka panjang (SQLite), eksekusi perintah Windows via intent rule-based, dan **server remote HTTP** supaya bisa dikontrol dari HP dalam satu LAN.
+Yuki adalah asisten AI personal berbahasa Indonesia yang berjalan sebagai **system tray app** di Windows. Interaksi dan seluruh balasan aplikasi utama menggunakan **teks** melalui jendela chat atau mode console. Fitur lain mencakup mode curhat dengan AI lokal (Ollama), memori jangka panjang (SQLite), eksekusi perintah Windows via intent rule-based, dan server remote HTTP.
 
 > Status: masih proyek iseng / belum rilis. Komponen suara *masuk* (Whisper STT, wake word, speaker verification) sudah ditulis dan di-*test*, tapi **belum diintegrasikan ke binary utama** — input sekarang masih teks.
 
@@ -15,19 +15,20 @@ Yuki adalah asisten AI personal berbahasa Indonesia yang berjalan sebagai **syst
 
 - **Tray Chat UI**: App berjalan di *system tray* (Win32 native, dark theme). Klik ikon → jendela chat kecil (riwayat percakapan + input teks + tombol send). Tekan Enter untuk kirim.
 - **Dual Conversation Mode**:
-  - **Mode Perintah** (default) — teks dikenali `IntentDetector` dan dieksekusi langsung (buka app, kunci layar, volume, brightness, wifi, dll) tanpa memanggil AI.
-  - **Mode Curhat** — dipicu frasa seperti *"aku mau curhat"*, *"aku capek"* (exact match + fuzzy Levenshtein). Percakapan dikirim ke Ollama dengan persona custom dari `config.json`. Keluar dengan frasa *"udah dulu"*, dll.
+  - **Mode Perintah** (default) — hanya menjalankan intent Windows yang dikenali. Input tidak dikenal ditolak singkat dan tidak dikirim ke Ollama. Berpindah secara eksplisit dengan `/curhat`.
+  - **Mode Curhat** — pesan percakapan dikirim ke Ollama dengan persona Yukihana dan memori SQLite yang relevan. Isi percakapan tidak diteruskan ke intent Windows. Berpindah kembali dengan `/perintah`; `/mode` menampilkan mode aktif.
 - **Eksekusi Perintah Windows**: Shutdown/Restart/Sleep/Lock/Logout (dengan konfirmasi), buka VS Code/Steam/Explorer, buka web (YouTube Music, GitHub, Facebook, ChatGPT, dll), screenshot, volume (COM `endpointvolume`), brightness (WMI + gamma ramp fallback), wifi on/off, dan `PlaySong` (YouTube).
 - **Memori Jangka Panjang (SQLite)**: Fakta dari percakapan (nama, kota, kampus, kesukaan) diekstrak dengan pola → disimpan di `memory.db` → diambil relevan saat prompt dibangun (smart retrieval).
 - **Ollama Integration (AI Lokal)**: `gemma3:4b` lewat HTTP, privasi terjaga, tanpa API eksternal. Dibungkus interface `AIBackend` agar mudah ganti backend.
 - **Server Remote (LAN)**: HTTP server minimal (Winsock) di port `8123` — `GET /api/health`, `POST /api/say`, otorisasi opsional via header `X-Yuki-Token`, CORS `*`. Thread-safe karena memakai `CommandRouter`.
-- **Voice Output (TTS)**: Balasan diucapkan lewat Windows SAPI, volume/rate bisa diatur di `config.json`.
+- **Output teks**: Balasan ditampilkan di jendela chat atau console. Target aplikasi utama tidak membuat objek TTS dan tidak menautkan Windows SAPI.
 - **Normalisasi & Fuzzy Matching**: `TextNormalizer` + `Utf8Sanitizer` untuk membersihkan input, `StringFuzzy` (Levenshtein) untuk toleransi kesalahan ketik pada trigger/exit phrase.
 
 ### 🧊 Komponen "dormant" (kode + unit test ada, belum masuk binary utama)
 
+- `TextToSpeech` — source SAPI dipertahankan untuk target tes terpisah; tidak ditautkan ke aplikasi utama.
 - `WhisperRecognizer` (whisper.cpp, model `base`) — Speech-to-Text.
-- `VoiceSession` — state machine push-to-talk / always-on (wake word).
+- `VoiceSession` — state machine push-to-talk / always-on (wake word); source-nya tetap memakai TTS, tetapi tidak masuk target aplikasi utama.
 - `WakeWordDetector` — deteksi kata "yuki".
 - `MfccExtractor` + `SpeakerVerifier` — verifikasi suara berbasis DSP (MFCC + cosine similarity), ada test sintetis.
 
@@ -66,10 +67,6 @@ flowchart TB
         DB[("SQLite<br/>memory.db")]
     end
 
-    subgraph OUTPUT["Keluaran"]
-        TTS["TextToSpeech<br/>SAPI voice output"]
-    end
-
     TRAY --> ROUTER
     REMOTE --> ROUTER
     CONSOLE --> ROUTER
@@ -86,7 +83,6 @@ flowchart TB
     OLLAMA --> CHAT
 
     CHAT --> ROUTER
-    ROUTER --> TTS
 ```
 
 ### Alur satu pesan (mode tray)
@@ -101,7 +97,6 @@ sequenceDiagram
     participant CC as ChatController
     participant MM as MemoryManager
     participant OLL as OllamaClient
-    participant TTS as TextToSpeech
 
     U->>TR: ketik teks + Enter
     TR->>RT: HandleText(text)  (mutex lock)
@@ -135,8 +130,7 @@ sequenceDiagram
         end
     end
 
-    RT-->>TR: balasan
-    TR->>TTS: Speak(reply)
+    RT-->>TR: balasan teks
 ```
 
 ---
@@ -201,7 +195,7 @@ Yuki/
 ├── CMakeLists.txt          # Build CMake: target Yuki + banyak target unit test
 ├── .gitignore              # Build/, *.db, .vscode/
 ├── config/
-│   └── config.json          # Semua pengaturan: voice, tts, ollama, memory, system, remote, persona
+│   └── config.json          # Pengaturan backend, memori, system, remote, persona, dan voice legacy
 ├── src/                     # Source code utama
 │   ├── main.cpp             # Entry point — mode: tray (default) / console (--mode console)
 │   ├── ai/                  # AIBackend (interface) + OllamaClient (HTTP ke Ollama)
@@ -216,7 +210,7 @@ Yuki/
 │   ├── tray/                # TrayIcon (komponen ikon tray)
 │   ├── ui/                  # TrayWindow (jendela chat utama) + MainWindow (legacy)
 │   ├── utils/               # TextNormalizer, Utf8Sanitizer, StringFuzzy, HttpClient, Json, Logger, AudioResampler
-│   └── voice/               # TextToSpeech (aktif); WhisperRecognizer, VoiceSession, WakeWordDetector (dormant)
+│   └── voice/               # Source TTS dipertahankan untuk tes; Whisper dan VoiceSession dormant
 ├── tests/                   # ±30 executable unit test (Intent, Memory, Chat, Voice, Audio, Remote, Config, dll)
 └── third_party/             # nlohmann/json, sqlite (amalgamation), whisper.cpp
 ```
@@ -229,12 +223,12 @@ Yuki/
 
 1. **Input**: User menekan Enter di input box jendela chat (atau mengirim `POST /api/say` dari HP ke `RemoteServer`).
 2. **Routing**: `CommandRouter::HandleText` (dilindungi mutex — aman dari thread UI & server) memilih jalur sesuai mode.
-3. **Mode Perintah**: `IntentDetector` mencocokkan teks → kalau intent dikenal, `WindowsController` mengeksekusi langsung (shutdown/restart/sleep butuh konfirmasi dulu). Kalau cocok trigger curhat → pindah mode Curhat.
-4. **Mode Curhat**: exit phrase → kembali ke Perintah; intent dikenal → tetap dieksekusi; selain itu → AI dengan persona.
+3. **Mode Perintah**: intent dikenali lalu dijalankan langsung; intent berisiko meminta konfirmasi. Teks tidak dikenal tidak memanggil Ollama.
+4. **Mode Curhat**: pesan percakapan menggunakan Ollama dan memori relevan; router tidak menjalankan intent Windows berdasarkan isi pesan.
 5. **Ekstraksi Memori**: kalau pernyataan mengandung pola fakta (bukan pertanyaan), fakta di-*upsert* ke `memory.db`.
 6. **AI Processing**: `PromptBuilder` menyusun prompt (memori relevan + persona + riwayat percakapan) → `OllamaClient` menghasilkan balasan.
 7. **Sanitasi**: tag sisa `[CMD:...]` dari model dibuang (tidak pernah dieksekusi).
-8. **Output**: Balasan ditampilkan di chat log dan diucapkan via `TextToSpeech`.
+8. **Output**: Balasan ditampilkan sebagai teks di chat log atau console.
 
 ---
 
@@ -245,7 +239,7 @@ Yuki/
 - **AI Backend**: [Ollama](https://ollama.com) — model default `gemma3:4b` (bisa ganti di `config.json`)
 - **Speech-to-Text** *(dormant)*: whisper.cpp (`ggml-base.bin`)
 - **Database**: SQLite3 (amalgamation di `third_party/sqlite`)
-- **TTS**: Windows SAPI
+- **TTS**: Source dan target tes TTS tetap tersedia, tetapi tidak digunakan atau ditautkan oleh target aplikasi utama.
 - **UI**: Win32 API native (tray icon + window), tanpa framework GUI berat
 - **HTTP**: WinHTTP (`HttpClient`), Winsock (`RemoteServer`)
 - **OS Target**: Windows
@@ -264,7 +258,7 @@ Tersedia banyak target unit test di CMake (mis. `SystemTest`, `MemoryTest`, `Ext
 - [x] Eksekusi perintah desktop (system, app, web, volume, brightness, wifi, screenshot, play song).
 - [x] Memori jangka panjang: ekstraksi pola → SQLite → smart retrieval → injeksi prompt.
 - [x] Remote server HTTP untuk kontrol dari HP dalam LAN.
-- [x] Tray chat UI (dark theme) + TTS output.
+- [x] Tray chat UI (dark theme) dengan output teks.
 - [x] ~~Wake word~~ — implementasi ada, tapi di-nonaktifkan (input sekarang lewat ketik/chat).
 - [x] ~~Low latency audio~~ — buffer reuse, VAD hysteresis, resampler (di komponen voice dormant).
 - [ ] Integrasi Whisper STT ke binary utama (input suara → chat).
@@ -285,3 +279,17 @@ Tersedia banyak target unit test di CMake (mis. `SystemTest`, `MemoryTest`, `Ext
 - `RemoteServer` tidak memakai TLS — hanya aman di LAN tepercaya; token dikirim plaintext via header.
 - `Application`/`MainWindow` di `src/core` & `src/ui` masih ter-compile tapi belum dipakai (dead code).
 - Whisper/wake word/speaker verification belum tersambung ke UI utama.
+
+## Windows 11 quick start
+
+Jalankan perintah dari root repository, karena konfigurasi dan database memakai path relatif:
+
+```powershell
+cmake -S . -B build -G "MinGW Makefiles"
+cmake --build build --target Yuki --parallel
+.\build\bin\Yuki.exe --mode console
+```
+
+Pastikan Ollama berjalan dan `gemma3:4b` tersedia (`ollama list`). Console mulai di Mode Perintah; gunakan `/curhat` untuk chat AI, `/perintah` untuk kembali, dan `/mode` untuk melihat mode aktif. Tanpa argumen mode, aplikasi menggunakan `ui_mode` dari konfigurasi.
+
+Remote HTTP berjalan hanya pada tray mode ketika `remote.enabled` aktif. Kontraknya `GET /api/health` dan `POST /api/say` dengan JSON `{"text":"..."}`; respons chat memakai field `reply`. Jika token dikonfigurasi, client mengirim header `X-Yuki-Token` yang sama. Token kosong berarti endpoint tidak meminta autentikasi.

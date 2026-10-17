@@ -3,13 +3,60 @@
 #include "../utils/Logger.h"
 
 #include <nlohmann/json.hpp>
+#include <cstdint>
 #include <exception>
+#include <iomanip>
+#include <sstream>
 #include <utility>
 
 namespace Yuki::AI
 {
 
 using json = nlohmann::json;
+
+namespace {
+
+void LogResponseMetrics(const json& parsed)
+{
+    std::ostringstream summary;
+    summary << "[PERF] Ollama";
+    bool hasMetric = false;
+
+    const auto appendCount = [&](const char* name)
+    {
+        const auto it = parsed.find(name);
+        if (it != parsed.end() && it->is_number_integer())
+        {
+            summary << ' ' << name << '=' << *it << " tokens";
+            hasMetric = true;
+        }
+    };
+
+    const auto appendDurationMs = [&](const char* name)
+    {
+        const auto it = parsed.find(name);
+        if (it != parsed.end() && it->is_number_integer())
+        {
+            const auto durationNs = it->get<std::uint64_t>();
+            summary << ' ' << name << '=' << std::fixed << std::setprecision(3)
+                    << (static_cast<double>(durationNs) / 1'000'000.0) << " ms";
+            hasMetric = true;
+        }
+    };
+
+    appendCount("prompt_eval_count");
+    appendDurationMs("prompt_eval_duration");
+    appendCount("eval_count");
+    appendDurationMs("eval_duration");
+    appendDurationMs("total_duration");
+
+    if (hasMetric)
+        Logger::Info(summary.str());
+    else
+        Logger::Info("[PERF] Ollama response metrics unavailable");
+}
+
+} // namespace
 
 OllamaClient::OllamaClient(
     Yuki::Utils::HttpClient& httpClient,
@@ -47,6 +94,7 @@ std::string OllamaClient::ParseResponseText(
     try
     {
         json parsed = json::parse(jsonBody);
+        LogResponseMetrics(parsed);
 
         if (parsed.contains("response") &&
             parsed["response"].is_string())

@@ -1,8 +1,14 @@
 ﻿# Mengabaikan folder hasil kompilasi/build
 build/
+build_*/
 out/
 bin/
 .vs/
+
+# Local backups and diagnostic logs
+backup_*.zip
+backup_*/
+debug.log
 
 # Mengabaikan file database lokal
 *.db

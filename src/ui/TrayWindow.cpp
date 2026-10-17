@@ -58,7 +58,6 @@ TrayWindow::TrayWindow(
     Yuki::Chat::CommandRouter& router)
     : m_config(config)
     , m_router(router)
-    , m_tts(config.tts)
 {
     memset(&m_nid, 0, sizeof(m_nid));
 }
@@ -716,7 +715,10 @@ void TrayWindow::AppendToChat(const std::string& text, bool isUser)
 void TrayWindow::LoadChatHistory()
 {
     // Welcome message
-    AppendToChat("Yuki siap — ketik perintahmu di bawah, lalu tekan Enter.", false);
+    const char* mode = m_router.GetMode() == Yuki::Chat::ConversationMode::Curhat
+        ? "Curhat" : "Perintah";
+    AppendToChat(std::string("Yuki siap. Mode aktif: ") + mode +
+        ". Gunakan /curhat atau /perintah untuk berpindah mode; /mode untuk melihat mode.", false);
 
     const auto& messages = m_router.GetChat().GetConversation().GetMessages();
     for (const auto& msg : messages)
@@ -757,8 +759,6 @@ void TrayWindow::ProcessInput(const std::string& text)
 {
     std::string reply = m_router.HandleText(text);
     if (reply.empty()) return;
-
-    m_tts.Speak(reply);
 
     if (!IsWindow(m_hwndHidden)) return;
 
